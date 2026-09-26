@@ -1,0 +1,38 @@
+name: Gerar IPA
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Instalar XcodeGen
+        run: brew install xcodegen
+
+      - name: Gerar projeto Xcode
+        run: xcodegen generate
+
+      - name: Compilar (sem assinatura, o AltStore assina)
+        run: |
+          xcodebuild -project TheBox.xcodeproj -scheme TheBox \
+            -configuration Release -sdk iphoneos \
+            -destination 'generic/platform=iOS' \
+            -derivedDataPath build \
+            CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" \
+            build
+
+      - name: Empacotar .ipa
+        run: |
+          mkdir -p Payload
+          cp -R build/Build/Products/Release-iphoneos/TheBox.app Payload/
+          zip -qry TheBox.ipa Payload
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: TheBox-ipa
+          path: TheBox.ipa
