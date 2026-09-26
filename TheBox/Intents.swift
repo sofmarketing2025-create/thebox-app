@@ -52,7 +52,7 @@ struct RegistrarGastoIntent: AppIntent {
     }
 
     @MainActor
-    func perform() async throws -> some IntentResult & ProvidesDialog {
+    func perform() async throws -> some IntentResult {
         guard let container = Store.atual else {
             throw ErroAtalho(texto: "Entre no LBO Finanças primeiro.")
         }
@@ -60,9 +60,11 @@ struct RegistrarGastoIntent: AppIntent {
         let desc = (descricao ?? "").trimmingCharacters(in: .whitespaces)
         ctx.insert(Transacao(tipo: .gasto, valor: valor, categoria: categoria, carteira: pagamento, descricao: desc))
         try ctx.save()
+        // Mesmo aviso do app: "R$ 20,00 registrado — Teste · Alimentação"
+        Notificacoes.registrado(valor: valor, titulo: desc.isEmpty ? "Gasto" : desc, categoria: categoria)
         Notificacoes.verificarLimite(categoria: categoria, valor: valor, data: .now, ctx: ctx)
         Notificacoes.reagendar(ctx)
-        return .result(dialog: IntentDialog(stringLiteral: "\(valor.moeda) registrado em \(categoria)."))
+        return .result()
     }
 }
 

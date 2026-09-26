@@ -96,6 +96,10 @@ struct UsuarioView: View {
             }
         }
         .task {
+            if onboardingFeito,
+               await UNUserNotificationCenter.current().notificationSettings().authorizationStatus == .notDetermined {
+                _ = await Notificacoes.pedirPermissao()
+            }
             Notificacoes.reagendar(ctx)
             if estado.bloqueado && faceID { desbloquear() }
         }
