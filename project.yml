@@ -1,32 +1,39 @@
 name: TheBox
 options:
-  bundleIdPrefix: com.thebox
+  bundleIdPrefix: com.lbofinancas
   developmentLanguage: pt-BR
   deploymentTarget:
     iOS: "17.0"
 settings:
   base:
     SWIFT_VERSION: "5.0"
-    MARKETING_VERSION: "1.0"
-    CURRENT_PROJECT_VERSION: "1"
+    MARKETING_VERSION: "2.0"
+    CURRENT_PROJECT_VERSION: "2"
+packages:
+  Supabase:
+    url: https://github.com/supabase/supabase-swift
+    from: 2.0.0
 targets:
   TheBox:
     type: application
     platform: iOS
     sources:
       - TheBox
+    dependencies:
+      - package: Supabase
+        product: Supabase
     scheme: {}
     info:
       path: Info.plist
       properties:
-        CFBundleDisplayName: The Box App
+        CFBundleDisplayName: LBO Finanças
         CFBundleDevelopmentRegion: pt-BR
         UILaunchScreen: {}
         UISupportedInterfaceOrientations: [UIInterfaceOrientationPortrait]
-        UIUserInterfaceStyle: Dark
         ITSAppUsesNonExemptEncryption: false
+        NSFaceIDUsageDescription: Usamos o Face ID para proteger seus dados financeiros.
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: com.thebox.app
+        PRODUCT_BUNDLE_IDENTIFIER: com.lbofinancas.app
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         TARGETED_DEVICE_FAMILY: "1"

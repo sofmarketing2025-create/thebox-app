@@ -3,73 +3,99 @@ import SwiftData
 import Charts
 
 struct ContasView: View {
+    @Binding var mes: Int
     @Environment(\.modelContext) private var ctx
     @Query private var contas: [Conta]
-    @State private var mes = Mes.indice()
+    @Query private var transacoes: [Transacao]
+    @Query(sort: \Carteira.ordem) private var carteiras: [Carteira]
+    @Query(sort: \Categoria.ordem) private var categorias: [Categoria]
     @State private var editando: Conta?
     @State private var criando = false
-
-    private func lista(em i: Int) -> [Conta] {
-        contas.filter { $0.ocorre(em: i) }.sorted { $0.dia < $1.dia }
-    }
-    private func total(em i: Int) -> Double {
-        lista(em: i).reduce(0) { $0 + $1.valor }
-    }
-    private func compromissos(em i: Int) -> [Conta] {
-        contas.filter { $0.tipo != .unico && $0.ocorre(em: i) }
-    }
+    @State private var pagando: Conta?
 
     var body: some View {
-        let doMes = lista(em: mes)
-        let tot = doMes.reduce(0) { $0 + $1.valor }
-        let pago = doMes.filter { $0.pago(em: mes) }.reduce(0) { $0 + $1.valor }
-        let ativos = compromissos(em: mes)
-        let grafico = ((mes - 3)...(mes + 3)).map { PontoMes(mes: $0, valor: total(em: $0)) }
-        let serie = (mes...(mes + 5)).map { i in
-            PontoMes(mes: i, valor: compromissos(em: i).reduce(0) { $0 + $1.valor })
-        }
+        let fin = Financas(transacoes: transacoes, contas: contas, carteiras: carteiras)
+        let doMes = fin.contasDoMes(mes)
+        let faturas = fin.cartoes().filter { fin.fatura($0, em: mes) > 0 }
+        let totalContas = doMes.reduce(0) { $0 + $1.valor }
+        let totalFaturas = faturas.reduce(0) { $0 + fin.fatura($1, em: mes) }
+        let pagoContas = doMes.filter { $0.pago(em: mes) }.reduce(0) { $0 + $1.valor }
+        let pagoFaturas = faturas.filter { $0.faturaPaga(em: mes) }.reduce(0) { $0 + fin.fatura($1, em: mes) }
+        let quantidade = doMes.count + faturas.count
 
         ScrollView {
             VStack(alignment: .leading, spacing: 18) {
                 Cabecalho(sub: "Planejamento", titulo: "Contas") {
                     SeletorMes(mes: $mes)
-                    BotaoMais { criando = true }
+                    BotaoCirculo(icone: "plus") { criando = true }
                 }
 
-                ResumoCard(mes: mes, total: tot, pago: pago)
-                GraficoMeses(dados: grafico, selecionado: mes)
-                CompromissosCard(total: ativos.reduce(0) { $0 + $1.valor }, quantidade: ativos.count, serie: serie)
+                ResumoCard(mes: mes, total: totalContas + totalFaturas, pago: pagoContas + pagoFaturas)
+
+                if !contas.isEmpty {
+                    GraficoMeses(dados: ((mes - 3)...(mes + 3)).map { i in
+                        PontoMes(mes: i, valor: fin.contasDoMes(i).reduce(0) { $0 + $1.valor })
+                    }, selecionado: mes)
+                }
 
                 HStack(alignment: .firstTextBaseline) {
                     Text(mes == Mes.indice() ? "Este mês" : Mes.nome(mes))
                         .font(.system(size: 24, weight: .bold))
                     Spacer()
-                    Text("\(doMes.count) \(doMes.count == 1 ? "conta" : "contas")")
+                    Text("\(quantidade) \(quantidade == 1 ? "conta" : "contas")")
                         .font(.system(size: 18))
                         .foregroundStyle(.secondary)
                 }
                 .padding(.top, 12)
 
-                if doMes.isEmpty {
-                    Vazio(texto: "Nenhuma conta em \(Mes.nome(mes).lowercased()).",
-                          botao: "Adicionar conta") { criando = true }
+                if quantidade == 0 {
+                    Vazio(titulo: "Nenhuma conta ainda", texto: "Toque no + no topo da tela para adicionar")
                 } else {
-                    ForEach(doMes) { conta in
-                        LinhaConta(conta: conta, mes: mes) {
-                            conta.alternarPago(em: mes)
+                    ForEach(faturas) { c in
+                        LinhaFatura(cartao: c, valor: fin.fatura(c, em: mes), mes: mes) {
+                            c.alternarFatura(em: mes)
                             try? ctx.save()
                             Notificacoes.reagendar(ctx)
+                        }
+                    }
+                    ForEach(doMes) { conta in
+                        LinhaConta(conta: conta, mes: mes, icone: icone(conta.categoria),
+                                   carteiraCredito: fin.credito(conta.pagamento(em: mes) ?? "")) {
+                            if conta.pago(em: mes) {
+                                conta.desmarcar(em: mes)
+                                try? ctx.save()
+                                Notificacoes.reagendar(ctx)
+                            } else {
+                                pagando = conta
+                            }
                         }
                         .onTapGesture { editando = conta }
                     }
                 }
             }
             .padding(.horizontal, 20)
-            .padding(.bottom, 30)
+            .padding(.bottom, 20)
         }
         .background(Color.fundo)
-        .sheet(isPresented: $criando) { FormConta(conta: nil, mesInicial: mes) }
-        .sheet(item: $editando) { conta in FormConta(conta: conta, mesInicial: mes) }
+        .sheet(isPresented: $criando) { FormContaView(conta: nil, mesInicial: mes) }
+        .sheet(item: $editando) { conta in FormContaView(conta: conta, mesInicial: mes) }
+        .confirmationDialog("Como você pagou?",
+                            isPresented: Binding(get: { pagando != nil }, set: { if !$0 { pagando = nil } }),
+                            titleVisibility: .visible,
+                            presenting: pagando) { conta in
+            ForEach(carteiras) { c in
+                Button(c.tipo == .credito ? "\(c.nome) (entra na fatura)" : c.nome) {
+                    conta.marcarPago(em: mes, carteira: c.nome)
+                    try? ctx.save()
+                    Notificacoes.reagendar(ctx)
+                    pagando = nil
+                }
+            }
+        }
+    }
+
+    private func icone(_ nome: String) -> String {
+        categorias.first { $0.nome == nome && $0.tipo == .gasto }?.icone ?? Categoria.iconePadrao(nome)
     }
 }
 
@@ -86,15 +112,15 @@ struct ResumoCard: View {
                     .font(.system(size: 13, weight: .semibold))
                     .tracking(2.5)
                     .foregroundStyle(.secondary)
-                Text(total.brl)
+                Text(total.moeda)
                     .font(.system(size: 36, weight: .heavy))
                     .lineLimit(1)
                     .minimumScaleFactor(0.6)
                     .padding(.top, 4)
                 Text("total de contas").foregroundStyle(.secondary)
                 VStack(alignment: .leading, spacing: 8) {
-                    Legenda(cor: .green, texto: "\(pago.brl) pago")
-                    Legenda(cor: .orange, texto: "\((total - pago).brl) restante")
+                    Legenda(cor: .green, texto: "\(pago.moeda) pago")
+                    Legenda(cor: .orange, texto: "\((total - pago).moeda) restante")
                 }
                 .padding(.top, 14)
             }
@@ -111,7 +137,7 @@ struct ResumoCard: View {
                     Text("pago").font(.footnote).foregroundStyle(.secondary)
                 }
             }
-            .frame(width: 104, height: 104)
+            .frame(width: 110, height: 110)
         }
         .cartao()
     }
@@ -136,35 +162,23 @@ struct GraficoMeses: View {
                         width: 26
                     )
                     .cornerRadius(9)
-                    .foregroundStyle(d.mes == selecionado && d.valor > 0 ? Color.white : Color.cartao2)
-                }
-                ForEach(dados) { d in
-                    LineMark(
-                        x: .value("Mês", Mes.curto(d.mes)),
-                        y: .value("Linha", d.valor + maxV * 0.12)
-                    )
-                    .interpolationMethod(.catmullRom)
-                    .foregroundStyle(Color.white)
-                    .lineStyle(StrokeStyle(lineWidth: 1.8))
-                    .symbol {
-                        Circle().fill(Color.white).frame(width: 6, height: 6)
-                    }
+                    .foregroundStyle(d.mes == selecionado && d.valor > 0 ? Color.primary : Color.cartao2)
                 }
             }
             .chartXAxis(.hidden)
             .chartYAxis(.hidden)
-            .chartYScale(domain: 0...(maxV * 1.2))
-            .frame(height: 150)
+            .chartYScale(domain: 0...(maxV * 1.1))
+            .frame(height: 120)
 
             HStack(spacing: 0) {
                 ForEach(dados) { d in
                     let on = d.mes == selecionado
                     VStack(spacing: 4) {
-                        Text(on && d.valor > 0 ? "R$\(d.valor.curto)" : d.valor.curto)
+                        Text(d.valor.curto)
                         Text(Mes.curto(d.mes))
                     }
                     .font(.system(size: 12, weight: on ? .bold : .medium))
-                    .foregroundStyle(on ? Color.white : Color.secondary)
+                    .foregroundStyle(on ? Color.primary : Color.secondary)
                     .lineLimit(1)
                     .minimumScaleFactor(0.7)
                     .frame(maxWidth: .infinity)
@@ -175,59 +189,40 @@ struct GraficoMeses: View {
     }
 }
 
-struct CompromissosCard: View {
-    let total: Double
-    let quantidade: Int
-    let serie: [PontoMes]
+struct BotaoStatus: View {
+    let pago: Bool
+    let atrasada: Bool
+    var acao: () -> Void
 
     var body: some View {
-        let maxV = max(serie.map(\.valor).max() ?? 0, 1)
-        HStack {
-            VStack(alignment: .leading, spacing: 8) {
-                Text("Compromissos ativos").font(.system(size: 19, weight: .semibold))
-                Text(total.brl).font(.system(size: 22, weight: .bold))
-                Text("\(quantidade) \(quantidade == 1 ? "ativo" : "ativos") por mês")
-                    .foregroundStyle(.secondary)
-            }
-            Spacer()
-            Chart {
-                ForEach(serie) { p in
-                    AreaMark(x: .value("Mês", p.mes), y: .value("Total", p.valor))
-                        .interpolationMethod(.catmullRom)
-                        .foregroundStyle(LinearGradient(colors: [.white.opacity(0.18), .clear],
-                                                        startPoint: .top, endPoint: .bottom))
-                    LineMark(x: .value("Mês", p.mes), y: .value("Total", p.valor))
-                        .interpolationMethod(.catmullRom)
-                        .foregroundStyle(Color.white)
-                        .lineStyle(StrokeStyle(lineWidth: 2))
-                }
-            }
-            .chartXAxis(.hidden)
-            .chartYAxis(.hidden)
-            .chartYScale(domain: 0...(maxV * 1.15))
-            .frame(width: 130, height: 60)
+        let cor: Color = pago ? .green : (atrasada ? .red : .orange)
+        Button(action: acao) {
+            Text(pago ? "Pago" : (atrasada ? "Atrasada" : "Pendente"))
+                .font(.system(size: 13, weight: .semibold))
+                .foregroundStyle(cor)
+                .padding(.horizontal, 12)
+                .padding(.vertical, 6)
+                .background(cor.opacity(0.12), in: Capsule())
+                .overlay(Capsule().stroke(cor.opacity(0.5)))
         }
-        .cartao()
+        .buttonStyle(.plain)
     }
 }
 
 struct LinhaConta: View {
     let conta: Conta
     let mes: Int
+    var icone = "tag.fill"
+    var carteiraCredito = false
     var alternar: () -> Void
 
     var body: some View {
-        let pago = conta.pago(em: mes)
-        let atrasada = conta.atrasada(em: mes)
-        let cor: Color = pago ? .green : (atrasada ? .red : .orange)
-        let status = pago ? "Pago" : (atrasada ? "Atrasada" : "Pendente")
-
         HStack(spacing: 14) {
-            Text(String(conta.nome.prefix(1)).uppercased())
-                .font(.system(size: 18, weight: .bold))
-                .foregroundStyle(.black)
+            Image(systemName: icone)
+                .font(.system(size: 20, weight: .semibold))
+                .foregroundStyle(Color.sobreDestaque)
                 .frame(width: 56, height: 56)
-                .background(Color.white, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+                .background(Color.destaque, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
 
             VStack(alignment: .leading, spacing: 6) {
                 HStack(spacing: 8) {
@@ -235,36 +230,68 @@ struct LinhaConta: View {
                     if let parcela = conta.parcela(em: mes) { Chip(parcela) }
                 }
                 HStack(spacing: 8) {
-                    Chip(conta.tipo.nome)
-                    Text("Vence dia \(String(format: "%02d", conta.dia))")
+                    Chip(conta.tipoNome)
+                    Text(textoVencimento)
                         .font(.subheadline)
                         .foregroundStyle(.secondary)
                         .lineLimit(1)
-                    if conta.tipo == .fixo {
-                        Image(systemName: "arrow.clockwise").font(.caption).foregroundStyle(.secondary)
-                    }
+                        .minimumScaleFactor(0.8)
                 }
             }
 
             Spacer(minLength: 4)
 
             VStack(alignment: .trailing, spacing: 8) {
-                Text(conta.valor.brl).font(.system(size: 17, weight: .bold)).lineLimit(1)
-                Button(action: alternar) {
-                    Text(status)
-                        .font(.system(size: 13, weight: .semibold))
-                        .foregroundStyle(cor)
-                        .padding(.horizontal, 12)
-                        .padding(.vertical, 6)
-                        .background(cor.opacity(0.12), in: Capsule())
-                        .overlay(Capsule().stroke(cor.opacity(0.5)))
-                }
-                .buttonStyle(.plain)
+                Text(conta.valor.moeda).font(.system(size: 17, weight: .bold)).lineLimit(1)
+                BotaoStatus(pago: conta.pago(em: mes), atrasada: conta.atrasada(em: mes), acao: alternar)
             }
         }
         .padding(16)
         .background(Color.cartao, in: RoundedRectangle(cornerRadius: 24, style: .continuous))
         .overlay(RoundedRectangle(cornerRadius: 24, style: .continuous).stroke(Color.borda))
         .contentShape(Rectangle())
+    }
+
+    private var textoVencimento: String {
+        if let c = conta.pagamento(em: mes) {
+            return carteiraCredito ? "Na fatura \(c)" : "Pago com \(c)"
+        }
+        let dia = String(format: "%02d", conta.dia)
+        return conta.venceMesSeguinte ? "Vence \(dia)/\(Mes.curto(mes + 1).lowercased())" : "Vence dia \(dia)"
+    }
+}
+
+struct LinhaFatura: View {
+    let cartao: Carteira
+    let valor: Double
+    let mes: Int
+    var alternar: () -> Void
+
+    var body: some View {
+        let pago = cartao.faturaPaga(em: mes)
+        let atrasada = !pago && Mes.data(mes, dia: cartao.diaVencimento, hora: 23) < .now
+        HStack(spacing: 14) {
+            Image(systemName: "creditcard.fill")
+                .font(.system(size: 20, weight: .semibold))
+                .foregroundStyle(Color.sobreDestaque)
+                .frame(width: 56, height: 56)
+                .background(Color.destaque, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+            VStack(alignment: .leading, spacing: 6) {
+                Text("Fatura \(cartao.nome)").font(.system(size: 18, weight: .semibold)).lineLimit(1)
+                HStack(spacing: 8) {
+                    Chip("Fatura")
+                    Text("Vence dia \(String(format: "%02d", cartao.diaVencimento))")
+                        .font(.subheadline).foregroundStyle(.secondary)
+                }
+            }
+            Spacer(minLength: 4)
+            VStack(alignment: .trailing, spacing: 8) {
+                Text(valor.moeda).font(.system(size: 17, weight: .bold)).lineLimit(1)
+                BotaoStatus(pago: pago, atrasada: atrasada, acao: alternar)
+            }
+        }
+        .padding(16)
+        .background(Color.cartao, in: RoundedRectangle(cornerRadius: 24, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: 24, style: .continuous).stroke(Color.borda))
     }
 }

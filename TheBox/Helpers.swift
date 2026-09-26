@@ -1,4 +1,9 @@
 import SwiftUI
+import UIKit
+
+let ptBR = Locale(identifier: "pt_BR")
+
+// MARK: - Meses
 
 enum Mes {
     static let nomes = ["Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho",
@@ -10,8 +15,8 @@ enum Mes {
         let c = Calendar.current.dateComponents([.year, .month], from: date)
         return (c.year ?? 2026) * 12 + (c.month ?? 1) - 1
     }
-    static func nome(_ i: Int) -> String { nomes[i % 12] }
-    static func curto(_ i: Int) -> String { curtos[i % 12] }
+    static func nome(_ i: Int) -> String { nomes[((i % 12) + 12) % 12] }
+    static func curto(_ i: Int) -> String { curtos[((i % 12) + 12) % 12] }
     static func ano(_ i: Int) -> Int { i / 12 }
     static func chave(_ i: Int) -> String { String(format: "%04d-%02d", i / 12, i % 12 + 1) }
 
@@ -24,16 +29,51 @@ enum Mes {
         c.day = 1
         let primeiro = cal.date(from: c) ?? .now
         let dias = cal.range(of: .day, in: .month, for: primeiro)?.count ?? 28
-        c.day = min(dia, dias)
+        c.day = min(max(dia, 1), dias)
         c.hour = hora
         return cal.date(from: c) ?? primeiro
     }
 }
 
-let ptBR = Locale(identifier: "pt_BR")
+// MARK: - Moeda
+
+enum Moeda: String, CaseIterable, Identifiable {
+    case BRL, USD, EUR, SGD, UYU, PYG, JPY
+    var id: String { rawValue }
+    var simbolo: String {
+        switch self {
+        case .BRL: return "R$"
+        case .USD: return "US$"
+        case .EUR: return "€"
+        case .SGD: return "S$"
+        case .UYU: return "$U"
+        case .PYG: return "₲"
+        case .JPY: return "¥"
+        }
+    }
+    var nome: String {
+        switch self {
+        case .BRL: return "Real"
+        case .USD: return "Dólar americano"
+        case .EUR: return "Euro"
+        case .SGD: return "Dólar de Singapura"
+        case .UYU: return "Peso uruguaio"
+        case .PYG: return "Guarani"
+        case .JPY: return "Iene"
+        }
+    }
+    static var atual: Moeda {
+        Moeda(rawValue: UserDefaults.standard.string(forKey: "moeda") ?? "BRL") ?? .BRL
+    }
+}
 
 extension Double {
-    var brl: String { formatted(.currency(code: "BRL").locale(ptBR)) }
+    var moeda: String {
+        formatted(.currency(code: Moeda.atual.rawValue).locale(ptBR))
+    }
+    var moedaInteira: String {
+        formatted(.currency(code: Moeda.atual.rawValue).locale(ptBR).precision(.fractionLength(0)))
+    }
     var curto: String {
         if self >= 1000 {
             return (self / 1000).formatted(.number.precision(.fractionLength(0...1)).locale(ptBR)) + "k"
@@ -41,39 +81,109 @@ extension Double {
         return String(Int(rounded()))
     }
     var textoCampo: String { String(format: "%.2f", self).replacingOccurrences(of: ".", with: ",") }
+    var inteiro: String { formatted(.number.precision(.fractionLength(0)).locale(ptBR)) }
 }
 
 /// Converte "1.234,56" ou "12,5" em número
 func lerValor(_ s: String) -> Double? {
-    let limpo = s.replacingOccurrences(of: "R$", with: "")
+    let limpo = s.replacingOccurrences(of: Moeda.atual.simbolo, with: "")
         .replacingOccurrences(of: " ", with: "")
         .replacingOccurrences(of: ".", with: "")
         .replacingOccurrences(of: ",", with: ".")
     return Double(limpo)
 }
 
-// MARK: - Estilo
-
-extension Color {
-    static let fundo = Color(red: 0.07, green: 0.07, blue: 0.08)
-    static let cartao = Color(red: 0.115, green: 0.115, blue: 0.125)
-    static let cartao2 = Color(white: 0.17)
-    static let borda = Color.white.opacity(0.07)
+func porcento(_ p: Double) -> String {
+    guard p.isFinite else { return "0%" }
+    return "\(Int((p * 100).rounded()))%"
 }
 
+func corPorcentagem(_ p: Double) -> Color {
+    if p >= 1 { return .red }
+    if p >= 0.8 { return .orange }
+    return .green
+}
+
+// MARK: - Cores (se adaptam ao tema claro e escuro)
+
+extension Color {
+    static func dinamica(_ escuro: UIColor, _ claro: UIColor) -> Color {
+        Color(uiColor: UIColor { t in t.userInterfaceStyle == .dark ? escuro : claro })
+    }
+    static let fundo = dinamica(UIColor(red: 0.07, green: 0.07, blue: 0.08, alpha: 1),
+                                UIColor(red: 0.95, green: 0.95, blue: 0.96, alpha: 1))
+    static let cartao = dinamica(UIColor(red: 0.125, green: 0.125, blue: 0.135, alpha: 1), .white)
+    static let cartao2 = dinamica(UIColor(white: 0.2, alpha: 1), UIColor(white: 0.9, alpha: 1))
+    static let borda = dinamica(UIColor(white: 1, alpha: 0.07), UIColor(white: 0, alpha: 0.06))
+    /// Botão principal: branco no escuro, preto no claro
+    static let destaque = dinamica(UIColor(white: 0.96, alpha: 1), UIColor(white: 0.08, alpha: 1))
+    static let sobreDestaque = dinamica(UIColor(white: 0.08, alpha: 1), .white)
+}
+
+// MARK: - Estilos
+
 struct EstiloCartao: ViewModifier {
+    var padding: CGFloat = 22
     func body(content: Content) -> some View {
         content
-            .padding(22)
+            .padding(padding)
             .frame(maxWidth: .infinity, alignment: .leading)
             .background(Color.cartao, in: RoundedRectangle(cornerRadius: 28, style: .continuous))
             .overlay(RoundedRectangle(cornerRadius: 28, style: .continuous).stroke(Color.borda))
     }
 }
 
-extension View {
-    func cartao() -> some View { modifier(EstiloCartao()) }
+struct EstiloCampo: ViewModifier {
+    func body(content: Content) -> some View {
+        content
+            .padding(.horizontal, 20)
+            .frame(height: 58)
+            .background(Color.cartao2.opacity(0.55), in: RoundedRectangle(cornerRadius: 20, style: .continuous))
+            .overlay(RoundedRectangle(cornerRadius: 20, style: .continuous).stroke(Color.borda))
+    }
 }
+
+struct EstiloPrincipal: ButtonStyle {
+    var ativo = true
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .font(.system(size: 18, weight: .semibold))
+            .foregroundStyle(Color.sobreDestaque)
+            .frame(maxWidth: .infinity)
+            .frame(height: 58)
+            .background(Color.destaque.opacity(ativo ? 1 : 0.35), in: Capsule())
+            .opacity(configuration.isPressed ? 0.8 : 1)
+    }
+}
+
+struct EstiloContorno: ButtonStyle {
+    var ativo = true
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .font(.system(size: 18, weight: .semibold))
+            .foregroundStyle(Color.primary.opacity(ativo ? 1 : 0.4))
+            .frame(maxWidth: .infinity)
+            .frame(height: 58)
+            .overlay(Capsule().stroke(Color.primary.opacity(ativo ? 0.35 : 0.15), lineWidth: 1.5))
+            .opacity(configuration.isPressed ? 0.7 : 1)
+    }
+}
+
+extension View {
+    func cartao(_ padding: CGFloat = 22) -> some View { modifier(EstiloCartao(padding: padding)) }
+    func campo() -> some View { modifier(EstiloCampo()) }
+    func folha(_ detents: Set<PresentationDetent> = [.large]) -> some View {
+        self.presentationDetents(detents)
+            .presentationBackground(Color.cartao)
+            .presentationCornerRadius(32)
+            .presentationDragIndicator(.visible)
+    }
+    func tituloGrande() -> some View {
+        self.font(.system(size: 38, weight: .heavy)).tracking(-1.2)
+    }
+}
+
+// MARK: - Componentes
 
 struct Cabecalho<Acoes: View>: View {
     let sub: String
@@ -83,52 +193,122 @@ struct Cabecalho<Acoes: View>: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 2) {
             Text(sub).font(.system(size: 17)).foregroundStyle(.secondary)
-            HStack {
-                Text(titulo).font(.system(size: 38, weight: .heavy)).tracking(-0.8)
-                Spacer()
-                HStack(spacing: 10) { acoes() }
+            HStack(spacing: 10) {
+                Text(titulo)
+                    .font(.system(size: 36, weight: .heavy)).tracking(-0.8)
+                    .lineLimit(1).minimumScaleFactor(0.6)
+                Spacer(minLength: 4)
+                acoes()
             }
         }
         .padding(.top, 8)
     }
 }
 
-struct BotaoMais: View {
+extension Cabecalho where Acoes == EmptyView {
+    init(sub: String, titulo: String) {
+        self.init(sub: sub, titulo: titulo) { EmptyView() }
+    }
+}
+
+struct BotaoCirculo: View {
+    let icone: String
     var acao: () -> Void
     var body: some View {
         Button(action: acao) {
-            Image(systemName: "plus")
+            Image(systemName: icone)
                 .font(.system(size: 20, weight: .medium))
-                .foregroundStyle(.white)
+                .foregroundStyle(.primary)
                 .frame(width: 52, height: 52)
                 .background(Color.cartao, in: Circle())
                 .overlay(Circle().stroke(Color.borda))
         }
-        .accessibilityLabel("Adicionar")
+        .buttonStyle(.plain)
+    }
+}
+
+struct BotaoFechar: View {
+    var icone = "xmark"
+    var acao: () -> Void
+    var body: some View {
+        Button(action: acao) {
+            Image(systemName: icone)
+                .font(.system(size: 16, weight: .semibold))
+                .foregroundStyle(.primary)
+                .frame(width: 44, height: 44)
+                .background(Color.cartao2.opacity(0.6), in: Circle())
+        }
+        .buttonStyle(.plain)
     }
 }
 
 struct SeletorMes: View {
     @Binding var mes: Int
+    @State private var aberto = false
     var body: some View {
-        let hoje = Mes.indice()
-        Menu {
-            Picker("Mês", selection: $mes) {
-                ForEach((hoje - 12)...(hoje + 12), id: \.self) { i in
-                    Text("\(Mes.nome(i)) \(String(Mes.ano(i)))").tag(i)
-                }
-            }
-        } label: {
+        Button { aberto = true } label: {
             HStack(spacing: 6) {
                 Text(Mes.curto(mes).uppercased()).font(.system(size: 15, weight: .bold)).tracking(1.5)
                 Image(systemName: "chevron.down").font(.system(size: 12, weight: .bold))
             }
-            .foregroundStyle(.white)
+            .foregroundStyle(.primary)
             .padding(.horizontal, 18)
             .frame(height: 46)
             .background(Color.cartao, in: Capsule())
             .overlay(Capsule().stroke(Color.borda))
         }
+        .buttonStyle(.plain)
+        .sheet(isPresented: $aberto) { SeletorMesSheet(mes: $mes) }
+    }
+}
+
+struct SeletorMesSheet: View {
+    @Binding var mes: Int
+    @Environment(\.dismiss) private var dismiss
+    @State private var ano: Int
+
+    init(mes: Binding<Int>) {
+        _mes = mes
+        _ano = State(initialValue: Mes.ano(mes.wrappedValue))
+    }
+
+    var body: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 0) {
+                HStack {
+                    Text("Selecionar mês").font(.system(size: 24, weight: .bold))
+                    Spacer()
+                    Button { ano -= 1 } label: { Image(systemName: "chevron.left").padding(8) }
+                    Text(String(ano)).font(.system(size: 18, weight: .bold)).frame(width: 60)
+                    Button { ano += 1 } label: { Image(systemName: "chevron.right").padding(8) }
+                }
+                .buttonStyle(.plain)
+                .padding(.bottom, 14)
+
+                ForEach(0..<12, id: \.self) { m in
+                    let i = ano * 12 + m
+                    Button {
+                        mes = i
+                        dismiss()
+                    } label: {
+                        HStack {
+                            Text(Mes.nomes[m])
+                                .font(.system(size: 18, weight: i == mes ? .bold : .regular))
+                                .foregroundStyle(i == mes ? Color.primary : Color.secondary)
+                            Spacer()
+                            if i == mes { Image(systemName: "checkmark") }
+                        }
+                        .padding(.vertical, 14)
+                        .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    if m < 11 { Divider().overlay(Color.borda) }
+                }
+            }
+            .padding(24)
+            .padding(.top, 10)
+        }
+        .folha()
     }
 }
 
@@ -142,6 +322,33 @@ struct Chip: View {
             .padding(.horizontal, 9)
             .padding(.vertical, 3)
             .background(Color.cartao2, in: Capsule())
+    }
+}
+
+/// Botão de opção (categoria, carteira) que fica branco quando selecionado
+struct ChipOpcao: View {
+    let texto: String
+    var icone: String? = nil
+    let selecionado: Bool
+    var cheio = true
+    let acao: () -> Void
+
+    var body: some View {
+        Button(action: acao) {
+            HStack(spacing: 10) {
+                if let icone { Image(systemName: icone).font(.system(size: 15)) }
+                Text(texto)
+                    .font(.system(size: 16, weight: selecionado ? .semibold : .regular))
+                    .lineLimit(1).minimumScaleFactor(0.8)
+            }
+            .foregroundStyle(selecionado ? Color.sobreDestaque : Color.secondary)
+            .padding(.horizontal, 16)
+            .frame(maxWidth: cheio ? .infinity : nil, alignment: .leading)
+            .frame(height: 50)
+            .background(selecionado ? Color.destaque : Color.cartao2.opacity(0.5),
+                        in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+        }
+        .buttonStyle(.plain)
     }
 }
 
@@ -171,23 +378,137 @@ struct LinhaStat: View {
 }
 
 struct Vazio: View {
+    var icone = "tray"
+    let titulo: String
     let texto: String
-    var botao: String? = nil
-    var acao: (() -> Void)? = nil
     var body: some View {
-        VStack(spacing: 14) {
-            Text(texto).foregroundStyle(.secondary).multilineTextAlignment(.center)
-            if let botao, let acao {
-                Button(action: acao) {
-                    Text(botao).font(.headline).foregroundStyle(.black)
-                        .padding(.horizontal, 20).padding(.vertical, 11)
-                        .background(.white, in: Capsule())
+        VStack(spacing: 10) {
+            Image(systemName: icone).font(.system(size: 30)).foregroundStyle(.secondary)
+            Text(titulo).font(.system(size: 18, weight: .semibold))
+            Text(texto).font(.subheadline).foregroundStyle(.secondary).multilineTextAlignment(.center)
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 44)
+    }
+}
+
+struct AnelProgresso: View {
+    let p: Double
+    var tamanho: CGFloat = 64
+    var linha: CGFloat = 4
+    var cor: Color = .green
+    var mostrarTexto = true
+
+    var body: some View {
+        ZStack {
+            Circle().stroke(Color.cartao2, lineWidth: linha)
+            Circle()
+                .trim(from: 0, to: min(max(p, 0), 1))
+                .stroke(cor, style: StrokeStyle(lineWidth: linha, lineCap: .round))
+                .rotationEffect(.degrees(-90))
+            if mostrarTexto {
+                Text(porcento(p)).font(.system(size: tamanho * 0.2, weight: .semibold))
+            }
+        }
+        .frame(width: tamanho, height: tamanho)
+    }
+}
+
+struct BarraProgresso: View {
+    let p: Double
+    var cor: Color = .green
+    var altura: CGFloat = 5
+
+    var body: some View {
+        GeometryReader { g in
+            ZStack(alignment: .leading) {
+                Capsule().fill(Color.cartao2)
+                if p > 0 {
+                    Capsule().fill(cor).frame(width: max(altura * 2, g.size.width * min(max(p, 0), 1)))
                 }
             }
         }
-        .frame(maxWidth: .infinity)
-        .padding(.vertical, 34)
-        .background(Color.cartao, in: RoundedRectangle(cornerRadius: 24, style: .continuous))
+        .frame(height: altura)
+    }
+}
+
+struct LogoView: View {
+    var tamanho: CGFloat = 96
+    var body: some View {
+        Image("Logo")
+            .resizable()
+            .scaledToFit()
+            .frame(width: tamanho, height: tamanho)
+            .clipShape(RoundedRectangle(cornerRadius: tamanho * 0.23, style: .continuous))
+    }
+}
+
+struct IconeQuadrado: View {
+    let icone: String
+    var tamanho: CGFloat = 48
+    var body: some View {
+        Image(systemName: icone)
+            .font(.system(size: tamanho * 0.4, weight: .semibold))
+            .foregroundStyle(.primary)
+            .frame(width: tamanho, height: tamanho)
+            .background(Color.cartao2.opacity(0.7), in: RoundedRectangle(cornerRadius: tamanho * 0.28, style: .continuous))
+    }
+}
+
+struct LinhaToggle: View {
+    let titulo: String
+    var sub: String? = nil
+    @Binding var ligado: Bool
+    var body: some View {
+        Toggle(isOn: $ligado) {
+            VStack(alignment: .leading, spacing: 3) {
+                Text(titulo).font(.system(size: 17))
+                if let sub { Text(sub).font(.footnote).foregroundStyle(.secondary) }
+            }
+        }
+        .tint(Color(white: 0.55))
+        .padding(.vertical, 12)
+    }
+}
+
+/// Folha simples com título, subtítulo, um valor em dinheiro e "Salvar"
+struct EditarValorSheet: View {
+    let titulo: String
+    let subtitulo: String
+    let salvar: (Double) -> Void
+    @Environment(\.dismiss) private var dismiss
+    @State private var texto: String
+    @FocusState private var foco: Bool
+
+    init(titulo: String, subtitulo: String, valor: Double, salvar: @escaping (Double) -> Void) {
+        self.titulo = titulo
+        self.subtitulo = subtitulo
+        self.salvar = salvar
+        _texto = State(initialValue: valor > 0 ? valor.inteiro.replacingOccurrences(of: ".", with: "") : "")
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text(titulo).font(.system(size: 24, weight: .bold))
+            Text(subtitulo).foregroundStyle(.secondary)
+            HStack(spacing: 12) {
+                Text(Moeda.atual.simbolo).font(.system(size: 32, weight: .bold)).foregroundStyle(.secondary)
+                TextField("0", text: $texto)
+                    .font(.system(size: 40, weight: .bold))
+                    .keyboardType(.decimalPad)
+                    .focused($foco)
+            }
+            .padding(.vertical, 18)
+            .padding(.horizontal, 12)
+            Button("Salvar") {
+                salvar(lerValor(texto) ?? 0)
+                dismiss()
+            }
+            .buttonStyle(EstiloPrincipal())
+        }
+        .padding(28)
+        .folha([.height(330)])
+        .onAppear { foco = true }
     }
 }
 
@@ -195,4 +516,12 @@ struct PontoMes: Identifiable {
     let mes: Int
     let valor: Double
     var id: Int { mes }
+}
+
+struct Compartilhar: UIViewControllerRepresentable {
+    let itens: [Any]
+    func makeUIViewController(context: Context) -> UIActivityViewController {
+        UIActivityViewController(activityItems: itens, applicationActivities: nil)
+    }
+    func updateUIViewController(_ vc: UIActivityViewController, context: Context) {}
 }

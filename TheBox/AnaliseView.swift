@@ -2,95 +2,200 @@ import SwiftUI
 import SwiftData
 import Charts
 
-struct FatiaCategoria: Identifiable {
-    let categoria: Categoria
-    let valor: Double
-    var id: String { categoria.rawValue }
-}
-
 struct AnaliseView: View {
-    @Query private var gastos: [Gasto]
+    @Binding var mes: Int
+    @Environment(\.modelContext) private var ctx
+    @Query private var transacoes: [Transacao]
     @Query private var contas: [Conta]
-    @State private var mes = Mes.indice()
-
-    private func gastosTotal(em i: Int) -> Double {
-        gastos.filter { $0.mes == i }.reduce(0) { $0 + $1.valor }
-    }
+    @Query(sort: \Carteira.ordem) private var carteiras: [Carteira]
+    @Query(sort: \Categoria.ordem) private var categorias: [Categoria]
+    @Query private var limites: [LimiteMensal]
+    @State private var editarLimite = false
+    @State private var categoriaEditando: Categoria?
+    @State private var insights = false
 
     var body: some View {
-        let doMes = gastos.filter { $0.mes == mes }
-        let total = doMes.reduce(0) { $0 + $1.valor }
-        let contasTotal = contas.filter { $0.ocorre(em: mes) }.reduce(0) { $0 + $1.valor }
-        let fatias = Categoria.allCases
-            .map { c in FatiaCategoria(categoria: c, valor: doMes.filter { $0.categoria == c }.reduce(0) { $0 + $1.valor }) }
-            .filter { $0.valor > 0 }
-            .sorted { $0.valor > $1.valor }
-        let historico = ((mes - 5)...mes).map { PontoMes(mes: $0, valor: gastosTotal(em: $0)) }
+        let fin = Financas(transacoes: transacoes, contas: contas, carteiras: carteiras, limites: limites)
+        let porCategoria = fin.gastoPorCategoria(em: mes)
+        let gasto = porCategoria.values.reduce(0, +)
+        let limite = fin.limite(em: mes)
+        let anterior = fin.gastoTotal(em: mes - 1)
+        let temAnterior = fin.temDados(em: mes - 1)
+        let cats = categorias.filter { $0.tipo == .gasto }
+        let comGasto = cats.filter { (porCategoria[$0.nome] ?? 0) > 0 }
+            .sorted { (porCategoria[$0.nome] ?? 0) > (porCategoria[$1.nome] ?? 0) }
+        let semGasto = cats.filter { (porCategoria[$0.nome] ?? 0) == 0 }
 
         ScrollView {
-            VStack(alignment: .leading, spacing: 18) {
-                Cabecalho(sub: "Resumo do mês", titulo: "Análise") {
+            VStack(alignment: .leading, spacing: 16) {
+                Cabecalho(sub: "Metas", titulo: "Análise") {
+                    BotaoCirculo(icone: "target") { insights = true }
                     SeletorMes(mes: $mes)
                 }
 
-                VStack(spacing: 0) {
-                    LinhaStat(titulo: "Gastos", valor: total.brl)
-                    Divider().overlay(Color.borda)
-                    LinhaStat(titulo: "Contas", valor: contasTotal.brl)
-                    Divider().overlay(Color.borda)
-                    LinhaStat(titulo: "Total do mês", valor: (total + contasTotal).brl, destaque: true)
+                CartaoOrcamento(mes: mes, gasto: gasto, limite: limite) { editarLimite = true }
+
+                CartaoComparacao(mes: mes, atual: gasto, anterior: anterior, temAnterior: temAnterior)
+
+                ForEach(comGasto) { c in
+                    LinhaMeta(categoria: c, gasto: porCategoria[c.nome] ?? 0)
+                        .cartao(20)
+                        .onTapGesture { categoriaEditando = c }
                 }
-                .cartao()
 
-                VStack(alignment: .leading, spacing: 14) {
-                    Text("Gastos por categoria")
-                        .font(.system(size: 15, weight: .semibold))
-                        .foregroundStyle(.secondary)
-                    if fatias.isEmpty {
-                        Text("Nenhum gasto em \(Mes.nome(mes).lowercased()).").foregroundStyle(.secondary)
-                    } else {
-                        Chart(fatias) { f in
-                            SectorMark(angle: .value("Valor", f.valor), innerRadius: .ratio(0.62), angularInset: 2)
-                                .cornerRadius(4)
-                                .foregroundStyle(f.categoria.cor)
-                        }
-                        .frame(height: 180)
-                        .padding(.vertical, 6)
-
-                        ForEach(fatias) { f in
-                            HStack(spacing: 10) {
-                                Image(systemName: f.categoria.icone)
-                                    .foregroundStyle(f.categoria.cor)
-                                    .frame(width: 22)
-                                Text(f.categoria.nome)
-                                Spacer()
-                                Text("\(Int((f.valor / max(total, 0.01) * 100).rounded()))%")
-                                    .foregroundStyle(.secondary)
-                                Text(f.valor.brl).fontWeight(.semibold)
-                            }
-                            .font(.system(size: 15))
+                if !semGasto.isEmpty {
+                    VStack(spacing: 0) {
+                        ForEach(semGasto) { c in
+                            LinhaMeta(categoria: c, gasto: 0)
+                                .padding(.vertical, 12)
+                                .contentShape(Rectangle())
+                                .onTapGesture { categoriaEditando = c }
+                            if c.chave != semGasto.last?.chave { Divider().overlay(Color.borda) }
                         }
                     }
+                    .cartao(20)
                 }
-                .cartao()
 
-                VStack(alignment: .leading, spacing: 14) {
-                    Text("Gastos nos últimos 6 meses")
-                        .font(.system(size: 15, weight: .semibold))
-                        .foregroundStyle(.secondary)
-                    Chart(historico) { p in
-                        BarMark(x: .value("Mês", Mes.curto(p.mes)), y: .value("Total", p.valor), width: 22)
-                            .cornerRadius(7)
-                            .foregroundStyle(p.mes == mes ? Color.white : Color.cartao2)
-                    }
-                    .chartYAxis(.hidden)
-                    .frame(height: 150)
-                }
-                .cartao()
+                Historico(dados: ((mes - 5)...mes).map { PontoMes(mes: $0, valor: fin.gastoTotal(em: $0)) }, mes: mes)
             }
             .padding(.horizontal, 20)
-            .padding(.bottom, 30)
+            .padding(.bottom, 20)
         }
         .background(Color.fundo)
+        .sheet(isPresented: $editarLimite) {
+            EditarValorSheet(titulo: "Limite de \(Mes.nome(mes).lowercased())",
+                             subtitulo: "Vale a partir deste mês, meses anteriores não mudam",
+                             valor: limite) { novo in
+                if let existente = limites.first(where: { $0.mes == mes }) {
+                    existente.valor = novo
+                } else {
+                    ctx.insert(LimiteMensal(mes: mes, valor: novo))
+                }
+                try? ctx.save()
+            }
+        }
+        .sheet(item: $categoriaEditando) { c in
+            EditarValorSheet(titulo: "Limite de \(c.nome)",
+                             subtitulo: "Quanto você quer gastar por mês com essa categoria",
+                             valor: c.limite) { novo in
+                c.limite = novo
+                try? ctx.save()
+            }
+        }
+        .fullScreenCover(isPresented: $insights) { InsightsView() }
+    }
+}
+
+struct CartaoOrcamento: View {
+    let mes: Int
+    let gasto: Double
+    let limite: Double
+    var editar: () -> Void
+
+    var body: some View {
+        let p = limite > 0 ? gasto / limite : 0
+        VStack(alignment: .leading, spacing: 8) {
+            HStack {
+                Text("GASTO")
+                Spacer()
+                Text("DO ORÇAMENTO")
+            }
+            .font(.system(size: 13, weight: .semibold)).tracking(1.5)
+            .foregroundStyle(.secondary)
+            HStack(alignment: .firstTextBaseline) {
+                Text(gasto.moeda).font(.system(size: 34, weight: .heavy)).lineLimit(1).minimumScaleFactor(0.6)
+                Spacer()
+                Text(limite > 0 ? porcento(p) : "—").font(.system(size: 34, weight: .heavy))
+            }
+            BarraProgresso(p: p, cor: limite > 0 ? corPorcentagem(p) : .primary, altura: 5)
+                .padding(.vertical, 10)
+            Button(action: editar) {
+                Text(limite > 0
+                     ? "\(gasto.moeda) de \(limite.moedaInteira) em \(Mes.nome(mes).lowercased()) · editar"
+                     : "Defina um limite para \(Mes.nome(mes).lowercased()) · editar")
+                    .font(.system(size: 15))
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.8)
+            }
+            .buttonStyle(.plain)
+        }
+        .cartao(26)
+    }
+}
+
+struct CartaoComparacao: View {
+    let mes: Int
+    let atual: Double
+    let anterior: Double
+    let temAnterior: Bool
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text("COMPARAÇÃO MENSAL")
+                .font(.system(size: 14, weight: .semibold)).tracking(1.5)
+                .foregroundStyle(.secondary)
+            if temAnterior && anterior > 0 {
+                let d = (atual - anterior) / anterior
+                HStack(alignment: .firstTextBaseline, spacing: 8) {
+                    Image(systemName: d <= 0 ? "arrow.down.right" : "arrow.up.right")
+                        .foregroundStyle(d <= 0 ? Color.green : Color.orange)
+                    Text("\(porcento(abs(d))) \(d <= 0 ? "a menos" : "a mais")")
+                        .font(.system(size: 24, weight: .bold))
+                    Text("que \(Mes.nome(mes - 1).lowercased())").foregroundStyle(.secondary)
+                }
+                Text("\(anterior.moeda) em \(Mes.nome(mes - 1).lowercased()) · \(atual.moeda) em \(Mes.nome(mes).lowercased())")
+                    .font(.footnote).foregroundStyle(.secondary)
+            } else {
+                Text("Disponível a partir do mês que vem, quando \(Mes.nome(mes).lowercased()) virar a base de comparação.")
+                    .foregroundStyle(.secondary.opacity(0.7))
+            }
+        }
+        .cartao(24)
+    }
+}
+
+struct LinhaMeta: View {
+    let categoria: Categoria
+    let gasto: Double
+
+    var body: some View {
+        let p = categoria.limite > 0 ? gasto / categoria.limite : 0
+        let ativo = gasto > 0
+        HStack(spacing: 16) {
+            AnelProgresso(p: p, tamanho: 60, linha: 4, cor: corPorcentagem(p))
+            Text(categoria.nome).font(.system(size: 18, weight: .medium)).lineLimit(1)
+            Spacer(minLength: 6)
+            HStack(spacing: 0) {
+                if ativo { Text(gasto.moeda).fontWeight(.semibold) }
+                Text(categoria.limite > 0 ? " / \(categoria.limite.moedaInteira)" : " / sem limite")
+                    .foregroundStyle(.secondary)
+            }
+            .font(.system(size: 16))
+            .lineLimit(1)
+            .minimumScaleFactor(0.7)
+        }
+        .opacity(ativo ? 1 : 0.45)
+    }
+}
+
+struct Historico: View {
+    let dados: [PontoMes]
+    let mes: Int
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            Text("Gastos nos últimos 6 meses")
+                .font(.system(size: 15, weight: .semibold))
+                .foregroundStyle(.secondary)
+            Chart(dados) { p in
+                BarMark(x: .value("Mês", Mes.curto(p.mes)), y: .value("Total", p.valor), width: 22)
+                    .cornerRadius(7)
+                    .foregroundStyle(p.mes == mes ? Color.primary : Color.cartao2)
+            }
+            .chartYAxis(.hidden)
+            .frame(height: 150)
+        }
+        .cartao()
     }
 }

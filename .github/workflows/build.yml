@@ -23,16 +23,17 @@ jobs:
             -configuration Release -sdk iphoneos \
             -destination 'generic/platform=iOS' \
             -derivedDataPath build \
+            -skipMacroValidation -skipPackagePluginValidation \
             CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" \
-            build
+            build > build.log 2>&1 || { grep -E "error:" build.log | sort -u | head -80; tail -30 build.log; exit 1; }
 
       - name: Empacotar .ipa
         run: |
           mkdir -p Payload
           cp -R build/Build/Products/Release-iphoneos/TheBox.app Payload/
-          zip -qry TheBox.ipa Payload
+          zip -qry LBO-Financas.ipa Payload
 
       - uses: actions/upload-artifact@v4
         with:
-          name: TheBox-ipa
-          path: TheBox.ipa
+          name: LBO-Financas-ipa
+          path: LBO-Financas.ipa

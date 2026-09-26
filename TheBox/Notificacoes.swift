@@ -3,51 +3,128 @@ import SwiftData
 import UserNotifications
 
 enum Notificacoes {
+    private static func ligado(_ chave: String) -> Bool {
+        UserDefaults.standard.object(forKey: chave) as? Bool ?? true
+    }
+
     static func pedirPermissao() async -> Bool {
         let center = UNUserNotificationCenter.current()
         return (try? await center.requestAuthorization(options: [.alert, .sound, .badge])) ?? false
     }
 
-    /// Apaga os avisos agendados e agenda de novo para as contas não pagas dos próximos meses.
+    /// Aviso na hora (aparece no topo mesmo com o app aberto)
+    static func agora(_ titulo: String, _ corpo: String) {
+        let c = UNMutableNotificationContent()
+        c.title = titulo
+        c.body = corpo
+        c.sound = .default
+        UNUserNotificationCenter.current().add(UNNotificationRequest(identifier: UUID().uuidString, content: c, trigger: nil))
+    }
+
+    /// "R$ 20,00 registrado — Teste · Alimentação"
+    static func registrado(valor: Double, titulo: String, categoria: String) {
+        agora("\(valor.moeda) registrado", "\(titulo) · \(categoria)")
+    }
+
+    /// Avisa quando uma categoria passa de 80% ou de 100% do limite
+    @MainActor
+    static func verificarLimite(categoria: String, valor: Double, data: Date, ctx: ModelContext) {
+        guard ligado("alertasInteligentes") else { return }
+        let cats = (try? ctx.fetch(FetchDescriptor<Categoria>())) ?? []
+        guard let cat = cats.first(where: { $0.nome == categoria && $0.tipo == .gasto }), cat.limite > 0 else { return }
+        let fin = Financas(transacoes: (try? ctx.fetch(FetchDescriptor<Transacao>())) ?? [],
+                           contas: (try? ctx.fetch(FetchDescriptor<Conta>())) ?? [],
+                           carteiras: (try? ctx.fetch(FetchDescriptor<Carteira>())) ?? [])
+        let total = fin.gastoPorCategoria(em: Mes.indice(data))[categoria] ?? 0
+        let antes = total - valor
+        if antes < cat.limite && total >= cat.limite {
+            agora("Limite atingido — \(categoria)",
+                  "Você atingiu 100% do orçamento de \(categoria) (\(cat.limite.moeda)).")
+        } else if antes < cat.limite * 0.8 && total >= cat.limite * 0.8 {
+            agora("Quase no limite — \(categoria)",
+                  "Você já usou \(porcento(total / cat.limite)) do orçamento de \(categoria) (\(cat.limite.moeda)).")
+        }
+    }
+
+    /// Refaz todos os avisos agendados: contas, faturas, lembrete diário e resumo da semana
     @MainActor
     static func reagendar(_ ctx: ModelContext) {
-        let contas = (try? ctx.fetch(FetchDescriptor<Conta>())) ?? []
-        let d = UserDefaults.standard
-        let ativo = d.object(forKey: "avisosAtivos") as? Bool ?? true
-        let antes = d.object(forKey: "diasAntes") as? Int ?? 2
-        let hora = d.object(forKey: "horaAviso") as? Int ?? 9
-
         let center = UNUserNotificationCenter.current()
         center.removeAllPendingNotificationRequests()
-        guard ativo else { return }
 
-        let hoje = Mes.indice()
+        let d = UserDefaults.standard
+        let antes = d.object(forKey: "diasAntes") as? Int ?? 2
+        let hora = d.object(forKey: "horaAviso") as? Int ?? 9
         let agora = Date.now
-        var avisos: [(quando: Date, pedido: UNNotificationRequest)] = []
+        let cal = Calendar.current
+        var avisos: [(quando: Date, titulo: String, corpo: String)] = []
 
-        for i in hoje...(hoje + 2) {
-            for conta in contas where conta.ocorre(em: i) && !conta.pago(em: i) {
-                let venc = Mes.data(i, dia: conta.dia, hora: hora)
-                var momentos: [(Date, String)] = [(venc, "vence hoje")]
-                if antes > 0, let antecipado = Calendar.current.date(byAdding: .day, value: -antes, to: venc) {
-                    momentos.append((antecipado, antes == 1 ? "vence amanhã" : "vence em \(antes) dias"))
+        let transacoes = (try? ctx.fetch(FetchDescriptor<Transacao>())) ?? []
+        let contas = (try? ctx.fetch(FetchDescriptor<Conta>())) ?? []
+        let carteiras = (try? ctx.fetch(FetchDescriptor<Carteira>())) ?? []
+        let fin = Financas(transacoes: transacoes, contas: contas, carteiras: carteiras)
+
+        if ligado("avisoContas") {
+            let hoje = Mes.indice()
+            for i in hoje...(hoje + 2) {
+                var itens: [(nome: String, valor: Double, venc: Date, fatura: Bool)] = []
+                for conta in contas where conta.ocorre(em: i) && !conta.pago(em: i) {
+                    itens.append((conta.nome, conta.valor, conta.vencimento(em: i, hora: hora), false))
                 }
-                for (quando, texto) in momentos where quando > agora {
-                    let conteudo = UNMutableNotificationContent()
-                    conteudo.title = conta.nome
-                    conteudo.body = "\(conta.valor.brl) \(texto)."
-                    conteudo.sound = .default
-                    let comps = Calendar.current.dateComponents([.year, .month, .day, .hour, .minute], from: quando)
-                    let gatilho = UNCalendarNotificationTrigger(dateMatching: comps, repeats: false)
-                    let pedido = UNNotificationRequest(identifier: UUID().uuidString, content: conteudo, trigger: gatilho)
-                    avisos.append((quando, pedido))
+                for cartao in fin.cartoes() where !cartao.faturaPaga(em: i) {
+                    let v = fin.fatura(cartao, em: i)
+                    if v > 0 { itens.append(("Fatura \(cartao.nome)", v, Mes.data(i, dia: cartao.diaVencimento, hora: hora), true)) }
+                }
+                for item in itens {
+                    avisos.append((item.venc, item.fatura ? "Fatura chegando" : item.nome, "\(item.valor.moeda) vence hoje."))
+                    if antes > 0, let antecipado = cal.date(byAdding: .day, value: -antes, to: item.venc) {
+                        let quando = antes == 1 ? "amanhã" : "em \(antes) dias"
+                        let corpo = item.fatura
+                            ? "Sua \(item.nome.lowercased()) vence \(quando) (\(item.valor.moeda))."
+                            : "\(item.valor.moeda) vence \(quando)."
+                        avisos.append((antecipado, item.fatura ? "Fatura chegando" : item.nome, corpo))
+                    }
                 }
             }
         }
 
-        // O iOS guarda no máximo 64 avisos pendentes por app
-        for aviso in avisos.sorted(by: { $0.quando < $1.quando }).prefix(60) {
-            center.add(aviso.pedido)
+        if ligado("resumoSemana") {
+            var comps = DateComponents()
+            comps.weekday = 1
+            comps.hour = 19
+            if let domingo = cal.nextDate(after: agora, matching: comps, matchingPolicy: .nextTime),
+               let inicio = cal.date(byAdding: .day, value: -6, to: cal.startOfDay(for: domingo)),
+               let inicio4 = cal.date(byAdding: .day, value: -28, to: inicio) {
+                let gastos = transacoes.filter { $0.tipo == .gasto }
+                let semana = gastos.filter { $0.data >= inicio }.reduce(0) { $0 + $1.valor }
+                let media = gastos.filter { $0.data >= inicio4 && $0.data < inicio }.reduce(0) { $0 + $1.valor } / 4
+                var corpo = "Você gastou \(semana.moeda) essa semana."
+                if media > 0 {
+                    let dif = (semana - media) / media
+                    corpo = "Você gastou \(semana.moeda) essa semana, \(porcento(abs(dif))) \(dif <= 0 ? "a menos" : "a mais") que a média."
+                }
+                avisos.append((domingo, "Resumo da semana", corpo))
+            }
+        }
+
+        for aviso in avisos.filter({ $0.quando > agora }).sorted(by: { $0.quando < $1.quando }).prefix(58) {
+            let c = UNMutableNotificationContent()
+            c.title = aviso.titulo
+            c.body = aviso.corpo
+            c.sound = .default
+            let comps = cal.dateComponents([.year, .month, .day, .hour, .minute], from: aviso.quando)
+            center.add(UNNotificationRequest(identifier: UUID().uuidString, content: c,
+                                             trigger: UNCalendarNotificationTrigger(dateMatching: comps, repeats: false)))
+        }
+
+        if ligado("lembreteRegistro") {
+            let c = UNMutableNotificationContent()
+            c.title = "Registrou seus gastos de hoje?"
+            c.body = "Leva dois segundos: toque duas vezes nas costas do iPhone."
+            c.sound = .default
+            center.add(UNNotificationRequest(identifier: "lembrete-diario", content: c,
+                                             trigger: UNCalendarNotificationTrigger(dateMatching: DateComponents(hour: 20, minute: 30),
+                                                                                    repeats: true)))
         }
     }
 }

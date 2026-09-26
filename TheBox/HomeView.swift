@@ -2,11 +2,18 @@ import SwiftUI
 import SwiftData
 
 struct HomeView: View {
-    @Environment(\.modelContext) private var ctx
-    @Query(sort: \Gasto.data, order: .reverse) private var gastos: [Gasto]
+    @Binding var mes: Int
+    @Environment(AppState.self) private var estado
+    @Query(sort: \Transacao.data, order: .reverse) private var transacoes: [Transacao]
     @Query private var contas: [Conta]
-    @State private var criando = false
-    @State private var editando: Gasto?
+    @Query(sort: \Carteira.ordem) private var carteiras: [Carteira]
+    @Query(sort: \Categoria.ordem) private var categorias: [Categoria]
+    @Query private var limites: [LimiteMensal]
+    @AppStorage("nomeUsuario") private var nome = ""
+    @AppStorage("ocultarSaldo") private var ocultar = false
+    @State private var detalhes = false
+    @State private var todas = false
+    @State private var editando: Transacao?
 
     private var saudacao: String {
         let h = Calendar.current.component(.hour, from: .now)
@@ -14,101 +21,256 @@ struct HomeView: View {
     }
 
     var body: some View {
-        let hoje = Mes.indice()
-        let doMes = gastos.filter { $0.mes == hoje }
-        let totalGastos = doMes.reduce(0) { $0 + $1.valor }
-        let pendentes = contas.filter { $0.ocorre(em: hoje) && !$0.pago(em: hoje) }.sorted { $0.dia < $1.dia }
+        let fin = Financas(transacoes: transacoes, contas: contas, carteiras: carteiras, limites: limites)
+        let doMes = fin.transacoes(em: mes)
+        let limite = fin.limite(em: mes)
+        let gasto = fin.gastoTotal(em: mes)
 
         ScrollView {
             VStack(alignment: .leading, spacing: 18) {
-                Cabecalho(sub: saudacao, titulo: "The Box") {
-                    BotaoMais { criando = true }
+                Cabecalho(sub: saudacao, titulo: nome.isEmpty ? "Olá" : nome) {
+                    SeletorMes(mes: $mes)
+                    BotaoCirculo(icone: "plus") { estado.abrirRegistro = true }
                 }
 
-                VStack(alignment: .leading, spacing: 4) {
-                    Text("GASTOS EM \(Mes.nome(hoje).uppercased())")
-                        .font(.system(size: 13, weight: .semibold))
-                        .tracking(2.5)
+                CartaoSaldo(saldo: fin.saldo(em: mes), progresso: limite > 0 ? gasto / limite : 0,
+                            ocultar: $ocultar) { detalhes = true }
+
+                HStack(alignment: .firstTextBaseline) {
+                    Text("Últimas transações").font(.system(size: 24, weight: .bold))
+                    Spacer()
+                    Button("Ver todas") { todas = true }
+                        .font(.system(size: 17))
                         .foregroundStyle(.secondary)
-                    Text(totalGastos.brl)
-                        .font(.system(size: 36, weight: .heavy))
-                        .lineLimit(1)
-                        .minimumScaleFactor(0.6)
-                        .padding(.top, 4)
-                    Text("\(doMes.count) \(doMes.count == 1 ? "gasto" : "gastos") no mês")
-                        .foregroundStyle(.secondary)
-                    ScrollView(.horizontal, showsIndicators: false) {
-                        HStack(spacing: 8) {
-                            ForEach(Pagamento.allCases) { p in
-                                let v = doMes.filter { $0.pagamento == p }.reduce(0) { $0 + $1.valor }
-                                if v > 0 { Chip("\(p.nome) \(v.brl)") }
-                            }
-                        }
-                    }
-                    .padding(.top, 10)
                 }
-                .cartao()
+                .padding(.top, 10)
 
-                if !pendentes.isEmpty {
-                    Text("Contas a pagar").font(.system(size: 24, weight: .bold)).padding(.top, 8)
-                    ForEach(pendentes) { conta in
-                        LinhaConta(conta: conta, mes: hoje) {
-                            conta.alternarPago(em: hoje)
-                            try? ctx.save()
-                            Notificacoes.reagendar(ctx)
-                        }
-                    }
-                }
-
-                Text("Gastos recentes").font(.system(size: 24, weight: .bold)).padding(.top, 8)
-                if gastos.isEmpty {
-                    Vazio(texto: "Seus gastos aparecem aqui.\nConfigure a automação da maquininha em Config.",
-                          botao: "Adicionar gasto") { criando = true }
+                if doMes.isEmpty {
+                    Vazio(titulo: "Nenhuma transação ainda",
+                          texto: "Dê 2 toques na parte traseira do iPhone para registrar")
                 } else {
-                    VStack(spacing: 0) {
-                        ForEach(gastos.prefix(30)) { g in
-                            LinhaGasto(gasto: g)
-                                .contentShape(Rectangle())
-                                .onTapGesture { editando = g }
-                            if g.id != gastos.prefix(30).last?.id { Divider().overlay(Color.borda) }
+                    VStack(spacing: 10) {
+                        ForEach(doMes.prefix(15)) { t in
+                            LinhaTransacao(transacao: t, iconeCarteira: iconeCarteira(t.carteira))
+                                .onTapGesture { editando = t }
                         }
                     }
-                    .padding(.horizontal, 16)
-                    .padding(.vertical, 6)
-                    .background(Color.cartao, in: RoundedRectangle(cornerRadius: 24, style: .continuous))
-                    .overlay(RoundedRectangle(cornerRadius: 24, style: .continuous).stroke(Color.borda))
                 }
             }
             .padding(.horizontal, 20)
-            .padding(.bottom, 30)
+            .padding(.bottom, 20)
         }
         .background(Color.fundo)
-        .sheet(isPresented: $criando) { FormGasto(gasto: nil) }
-        .sheet(item: $editando) { g in FormGasto(gasto: g) }
+        .sheet(isPresented: $detalhes) { DetalhesSaldoView(mes: mes) }
+        .sheet(isPresented: $todas) { TodasTransacoesView() }
+        .sheet(item: $editando) { t in RegistroSheet(editando: t) }
+    }
+
+    private func iconeCarteira(_ nome: String) -> String {
+        carteiras.first { $0.nome == nome }?.tipo.icone ?? "creditcard"
     }
 }
 
-struct LinhaGasto: View {
-    let gasto: Gasto
+struct CartaoSaldo: View {
+    let saldo: Double
+    let progresso: Double
+    @Binding var ocultar: Bool
+    var detalhes: () -> Void
+
     var body: some View {
-        HStack(spacing: 14) {
-            Image(systemName: gasto.categoria.icone)
-                .font(.system(size: 17))
-                .foregroundStyle(gasto.categoria.cor)
-                .frame(width: 44, height: 44)
-                .background(gasto.categoria.cor.opacity(0.15), in: RoundedRectangle(cornerRadius: 13, style: .continuous))
-            VStack(alignment: .leading, spacing: 3) {
-                Text(gasto.descricao.isEmpty ? gasto.categoria.nome : gasto.descricao)
-                    .font(.system(size: 16, weight: .semibold))
-                    .lineLimit(1)
-                Text("\(gasto.categoria.nome) · \(gasto.pagamento.nome) · \(gasto.data.formatted(.dateTime.day().month(.abbreviated).locale(ptBR)))")
-                    .font(.footnote)
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
+        VStack(spacing: -20) {
+            VStack(alignment: .leading, spacing: 10) {
+                HStack {
+                    Text("Saldo").font(.system(size: 18)).foregroundStyle(.secondary)
+                    Spacer()
+                    Button { withAnimation { ocultar.toggle() } } label: {
+                        Image(systemName: ocultar ? "eye.slash" : "eye").foregroundStyle(.secondary)
+                    }
+                    .buttonStyle(.plain)
+                }
+                Text(ocultar ? "\(Moeda.atual.simbolo) ••••••" : saldo.moeda)
+                    .font(.system(size: 44, weight: .heavy)).tracking(-1.2)
+                    .lineLimit(1).minimumScaleFactor(0.5)
+                BarraProgresso(p: progresso, cor: corPorcentagem(progresso), altura: 5)
+                    .padding(.top, 10)
+                    .padding(.bottom, 14)
             }
-            Spacer(minLength: 4)
-            Text(gasto.valor.brl).font(.system(size: 16, weight: .bold)).lineLimit(1)
+            .cartao(26)
+
+            Button(action: detalhes) {
+                Text("Ver detalhes")
+                    .font(.system(size: 15, weight: .medium))
+                    .foregroundStyle(.secondary)
+                    .padding(.horizontal, 22)
+                    .frame(height: 40)
+                    .background(Color.cartao2, in: Capsule())
+                    .overlay(Capsule().stroke(Color.borda))
+            }
+            .buttonStyle(.plain)
         }
-        .padding(.vertical, 12)
+    }
+}
+
+struct LinhaTransacao: View {
+    let transacao: Transacao
+    var iconeCarteira = "creditcard"
+
+    var body: some View {
+        HStack(spacing: 12) {
+            VStack(alignment: .leading, spacing: 5) {
+                Text(transacao.titulo).font(.system(size: 18, weight: .semibold)).lineLimit(1)
+                HStack(spacing: 6) {
+                    Image(systemName: iconeCarteira).font(.caption)
+                    Text(transacao.categoria).lineLimit(1)
+                }
+                .font(.system(size: 15))
+                .foregroundStyle(.secondary)
+            }
+            Spacer(minLength: 8)
+            VStack(alignment: .trailing, spacing: 5) {
+                Text((transacao.tipo == .gasto ? "-" : "+") + transacao.valor.moeda)
+                    .font(.system(size: 18, weight: .semibold))
+                    .foregroundStyle(transacao.tipo == .gasto ? Color.primary : Color.green)
+                Text(transacao.data.formatted(.dateTime.day().month(.abbreviated).locale(ptBR)))
+                    .font(.system(size: 15))
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .padding(.horizontal, 22)
+        .padding(.vertical, 18)
+        .background(Color.cartao, in: RoundedRectangle(cornerRadius: 24, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: 24, style: .continuous).stroke(Color.borda))
+        .contentShape(Rectangle())
+    }
+}
+
+struct DetalhesSaldoView: View {
+    let mes: Int
+    @Query private var transacoes: [Transacao]
+    @Query private var contas: [Conta]
+    @Query(sort: \Carteira.ordem) private var carteiras: [Carteira]
+
+    var body: some View {
+        let fin = Financas(transacoes: transacoes, contas: contas, carteiras: carteiras)
+        let porCarteira = Dictionary(grouping: fin.transacoes(em: mes).filter { $0.tipo == .gasto }, by: \.carteira)
+            .map { ItemValor(nome: $0.key, valor: $0.value.reduce(0) { $0 + $1.valor }) }
+            .sorted { $0.valor > $1.valor }
+
+        ScrollView {
+            VStack(alignment: .leading, spacing: 18) {
+                Text("Saldo de \(Mes.nome(mes).lowercased())").font(.system(size: 26, weight: .bold))
+                VStack(spacing: 0) {
+                    LinhaStat(titulo: "Receitas", valor: fin.receitas(em: mes).moeda)
+                    Divider().overlay(Color.borda)
+                    LinhaStat(titulo: "Gastos", valor: "-" + fin.gastosAvulsos(em: mes).moeda)
+                    Divider().overlay(Color.borda)
+                    LinhaStat(titulo: "Contas pagas", valor: "-" + fin.contasPagasFora(em: mes).moeda)
+                    Divider().overlay(Color.borda)
+                    LinhaStat(titulo: "Faturas pagas", valor: "-" + fin.faturasPagas(em: mes).moeda)
+                    Divider().overlay(Color.borda)
+                    LinhaStat(titulo: "Saldo", valor: fin.saldo(em: mes).moeda, destaque: true)
+                }
+                .padding(.horizontal, 20)
+                .padding(.vertical, 6)
+                .background(Color.cartao2.opacity(0.45), in: RoundedRectangle(cornerRadius: 22, style: .continuous))
+
+                if !porCarteira.isEmpty {
+                    Text("Gastos por meio de pagamento").font(.system(size: 18, weight: .semibold)).padding(.top, 6)
+                    VStack(spacing: 0) {
+                        ForEach(porCarteira) { item in
+                            LinhaStat(titulo: item.nome.isEmpty ? "Sem carteira" : item.nome, valor: item.valor.moeda)
+                            if item.nome != porCarteira.last?.nome { Divider().overlay(Color.borda) }
+                        }
+                    }
+                    .padding(.horizontal, 20)
+                    .padding(.vertical, 6)
+                    .background(Color.cartao2.opacity(0.45), in: RoundedRectangle(cornerRadius: 22, style: .continuous))
+                }
+
+                Text("Contas pagas no cartão de crédito não saem do saldo na hora: entram na fatura do mês seguinte.")
+                    .font(.footnote).foregroundStyle(.secondary)
+            }
+            .padding(24)
+            .padding(.top, 10)
+        }
+        .folha([.medium, .large])
+    }
+}
+
+struct ItemValor: Identifiable {
+    let nome: String
+    let valor: Double
+    var id: String { nome }
+}
+
+struct GrupoDia: Identifiable {
+    let dia: Date
+    let itens: [Transacao]
+    var id: Date { dia }
+}
+
+struct TodasTransacoesView: View {
+    @Environment(\.modelContext) private var ctx
+    @Environment(\.dismiss) private var dismiss
+    @Query(sort: \Transacao.data, order: .reverse) private var transacoes: [Transacao]
+    @Query(sort: \Carteira.ordem) private var carteiras: [Carteira]
+    @State private var busca = ""
+    @State private var editando: Transacao?
+
+    private var filtradas: [Transacao] {
+        let b = busca.trimmingCharacters(in: .whitespaces).lowercased()
+        guard !b.isEmpty else { return transacoes }
+        return transacoes.filter {
+            $0.descricao.lowercased().contains(b) || $0.categoria.lowercased().contains(b) || $0.carteira.lowercased().contains(b)
+        }
+    }
+
+    var body: some View {
+        let grupos = Dictionary(grouping: filtradas) { Calendar.current.startOfDay(for: $0.data) }
+            .map { GrupoDia(dia: $0.key, itens: $0.value) }
+            .sorted { $0.dia > $1.dia }
+
+        NavigationStack {
+            List {
+                if grupos.isEmpty {
+                    Vazio(titulo: "Nada por aqui", texto: "Nenhuma transação encontrada.")
+                        .listRowBackground(Color.clear)
+                }
+                ForEach(grupos) { grupo in
+                    Section(grupo.dia.formatted(.dateTime.weekday(.wide).day().month(.wide).locale(ptBR))) {
+                        ForEach(grupo.itens) { t in
+                            HStack {
+                                VStack(alignment: .leading, spacing: 3) {
+                                    Text(t.titulo).font(.system(size: 17, weight: .semibold))
+                                    Text("\(t.categoria) · \(t.carteira)").font(.footnote).foregroundStyle(.secondary)
+                                }
+                                Spacer()
+                                Text((t.tipo == .gasto ? "-" : "+") + t.valor.moeda)
+                                    .fontWeight(.semibold)
+                                    .foregroundStyle(t.tipo == .gasto ? Color.primary : Color.green)
+                            }
+                            .contentShape(Rectangle())
+                            .onTapGesture { editando = t }
+                            .swipeActions {
+                                Button("Apagar", role: .destructive) {
+                                    ctx.delete(t)
+                                    try? ctx.save()
+                                }
+                            }
+                        }
+                    }
+                    .listRowBackground(Color.cartao)
+                }
+            }
+            .scrollContentBackground(.hidden)
+            .background(Color.fundo)
+            .searchable(text: $busca, prompt: "Buscar")
+            .navigationTitle("Transações")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .confirmationAction) { Button("OK") { dismiss() } }
+            }
+            .sheet(item: $editando) { t in RegistroSheet(editando: t) }
+        }
     }
 }
