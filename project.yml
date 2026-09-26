@@ -26,7 +26,7 @@ targets:
     info:
       path: Info.plist
       properties:
-        CFBundleDisplayName: LBO Finanças
+        CFBundleDisplayName: LBO Financas
         CFBundleDevelopmentRegion: pt-BR
         UILaunchScreen: {}
         UISupportedInterfaceOrientations: [UIInterfaceOrientationPortrait]
