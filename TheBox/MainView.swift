@@ -96,14 +96,14 @@ struct BarraAbas: View {
                     withAnimation(.snappy(duration: 0.25)) { aba = a }
                 } label: {
                     HStack(spacing: 6) {
-                        Image(systemName: ativa ? a.iconeAtivo : a.icone).font(.system(size: 16))
+                        Image(systemName: ativa ? a.iconeAtivo : a.icone).font(.system(size: 15))
                         Text(a.titulo)
-                            .font(.system(size: 15, weight: ativa ? .semibold : .regular))
+                            .font(.system(size: 14, weight: ativa ? .semibold : .regular))
                             .lineLimit(1).minimumScaleFactor(0.7)
                     }
                     .foregroundStyle(ativa ? Color.primary : Color.secondary)
                     .frame(maxWidth: .infinity)
-                    .frame(height: 52)
+                    .frame(height: 48)
                     .background {
                         if ativa {
                             Capsule().fill(Color.cartao2.opacity(0.8)).overlay(Capsule().stroke(Color.borda))
@@ -160,7 +160,7 @@ struct TourOverlay: View {
         VStack(alignment: .leading, spacing: 10) {
             HStack {
                 Image(systemName: p.icone)
-                    .font(.system(size: 18, weight: .semibold))
+                    .font(.system(size: 16, weight: .semibold))
                     .frame(width: 56, height: 56)
                     .background(Color.sobreDestaque.opacity(0.08), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
                 Spacer()
@@ -172,17 +172,17 @@ struct TourOverlay: View {
                     }
                 }
             }
-            Text(p.titulo).font(.system(size: 24, weight: .bold)).padding(.top, 6)
-            Text(p.texto).font(.system(size: 17)).foregroundStyle(Color.sobreDestaque.opacity(0.6))
+            Text(p.titulo).font(.system(size: 21, weight: .bold)).padding(.top, 6)
+            Text(p.texto).font(.system(size: 15)).foregroundStyle(Color.sobreDestaque.opacity(0.6))
             HStack {
-                Button("Pular", action: pular).font(.system(size: 17)).foregroundStyle(Color.sobreDestaque.opacity(0.7))
+                Button("Pular", action: pular).font(.system(size: 15)).foregroundStyle(Color.sobreDestaque.opacity(0.7))
                 Spacer()
                 Button(action: avancar) {
                     HStack(spacing: 8) {
                         Text(passo + 1 < Self.passos.count ? "Próximo" : "Entendi")
                         Image(systemName: "arrow.right")
                     }
-                    .font(.system(size: 17, weight: .semibold))
+                    .font(.system(size: 15, weight: .semibold))
                     .foregroundStyle(Color.destaque)
                     .padding(.horizontal, 28)
                     .frame(height: 56)

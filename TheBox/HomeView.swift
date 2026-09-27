@@ -3,6 +3,7 @@ import SwiftData
 
 struct HomeView: View {
     @Binding var mes: Int
+    @Environment(\.modelContext) private var ctx
     @Environment(AppState.self) private var estado
     @Query(sort: \Transacao.data, order: .reverse) private var transacoes: [Transacao]
     @Query private var contas: [Conta]
@@ -37,10 +38,10 @@ struct HomeView: View {
                             ocultar: $ocultar) { detalhes = true }
 
                 HStack(alignment: .firstTextBaseline) {
-                    Text("Últimas transações").font(.system(size: 24, weight: .bold))
+                    Text("Últimas transações").font(.system(size: 21, weight: .bold))
                     Spacer()
                     Button("Ver todas") { todas = true }
-                        .font(.system(size: 17))
+                        .font(.system(size: 15))
                         .foregroundStyle(.secondary)
                 }
                 .padding(.top, 10)
@@ -53,6 +54,10 @@ struct HomeView: View {
                         ForEach(doMes.prefix(15)) { t in
                             LinhaTransacao(transacao: t, iconeCarteira: iconeCarteira(t.carteira))
                                 .onTapGesture { editando = t }
+                                .contextMenu {
+                                    Button { editando = t } label: { Label("Editar", systemImage: "pencil") }
+                                    Button(role: .destructive) { apagar(t) } label: { Label("Apagar", systemImage: "trash") }
+                                }
                         }
                     }
                 }
@@ -64,6 +69,14 @@ struct HomeView: View {
         .sheet(isPresented: $detalhes) { DetalhesSaldoView(mes: mes) }
         .sheet(isPresented: $todas) { TodasTransacoesView() }
         .sheet(item: $editando) { t in RegistroSheet(editando: t) }
+    }
+
+    private func apagar(_ t: Transacao) {
+        withAnimation {
+            ctx.delete(t)
+            try? ctx.save()
+        }
+        Notificacoes.reagendar(ctx)
     }
 
     private func iconeCarteira(_ nome: String) -> String {
@@ -81,7 +94,7 @@ struct CartaoSaldo: View {
         VStack(spacing: -20) {
             VStack(alignment: .leading, spacing: 10) {
                 HStack {
-                    Text("Saldo").font(.system(size: 18)).foregroundStyle(.secondary)
+                    Text("Saldo").font(.system(size: 16)).foregroundStyle(.secondary)
                     Spacer()
                     Button { withAnimation { ocultar.toggle() } } label: {
                         Image(systemName: ocultar ? "eye.slash" : "eye").foregroundStyle(.secondary)
@@ -89,17 +102,17 @@ struct CartaoSaldo: View {
                     .buttonStyle(.plain)
                 }
                 Text(ocultar ? "\(Moeda.atual.simbolo) ••••••" : saldo.moeda)
-                    .font(.system(size: 44, weight: .heavy)).tracking(-1.2)
+                    .font(.system(size: 36, weight: .heavy)).tracking(-1.2)
                     .lineLimit(1).minimumScaleFactor(0.5)
                 BarraProgresso(p: progresso, cor: corPorcentagem(progresso), altura: 5)
                     .padding(.top, 10)
                     .padding(.bottom, 14)
             }
-            .cartao(26)
+            .cartao(22)
 
             Button(action: detalhes) {
                 Text("Ver detalhes")
-                    .font(.system(size: 15, weight: .medium))
+                    .font(.system(size: 14, weight: .medium))
                     .foregroundStyle(.secondary)
                     .padding(.horizontal, 22)
                     .frame(height: 40)
@@ -118,26 +131,26 @@ struct LinhaTransacao: View {
     var body: some View {
         HStack(spacing: 12) {
             VStack(alignment: .leading, spacing: 5) {
-                Text(transacao.titulo).font(.system(size: 18, weight: .semibold)).lineLimit(1)
+                Text(transacao.titulo).font(.system(size: 16, weight: .semibold)).lineLimit(1)
                 HStack(spacing: 6) {
                     Image(systemName: iconeCarteira).font(.caption)
                     Text(transacao.categoria).lineLimit(1)
                 }
-                .font(.system(size: 15))
+                .font(.system(size: 14))
                 .foregroundStyle(.secondary)
             }
             Spacer(minLength: 8)
             VStack(alignment: .trailing, spacing: 5) {
                 Text((transacao.tipo == .gasto ? "-" : "+") + transacao.valor.moeda)
-                    .font(.system(size: 18, weight: .semibold))
+                    .font(.system(size: 16, weight: .semibold))
                     .foregroundStyle(transacao.tipo == .gasto ? Color.primary : Color.green)
                 Text(transacao.data.formatted(.dateTime.day().month(.abbreviated).locale(ptBR)))
-                    .font(.system(size: 15))
+                    .font(.system(size: 14))
                     .foregroundStyle(.secondary)
             }
         }
-        .padding(.horizontal, 22)
-        .padding(.vertical, 18)
+        .padding(.horizontal, 20)
+        .padding(.vertical, 15)
         .background(Color.cartao, in: RoundedRectangle(cornerRadius: 24, style: .continuous))
         .overlay(RoundedRectangle(cornerRadius: 24, style: .continuous).stroke(Color.borda))
         .contentShape(Rectangle())
@@ -158,7 +171,7 @@ struct DetalhesSaldoView: View {
 
         ScrollView {
             VStack(alignment: .leading, spacing: 18) {
-                Text("Saldo de \(Mes.nome(mes).lowercased())").font(.system(size: 26, weight: .bold))
+                Text("Saldo de \(Mes.nome(mes).lowercased())").font(.system(size: 23, weight: .bold))
                 VStack(spacing: 0) {
                     LinhaStat(titulo: "Receitas", valor: fin.receitas(em: mes).moeda)
                     Divider().overlay(Color.borda)
@@ -175,7 +188,7 @@ struct DetalhesSaldoView: View {
                 .background(Color.cartao2.opacity(0.45), in: RoundedRectangle(cornerRadius: 22, style: .continuous))
 
                 if !porCarteira.isEmpty {
-                    Text("Gastos por meio de pagamento").font(.system(size: 18, weight: .semibold)).padding(.top, 6)
+                    Text("Gastos por meio de pagamento").font(.system(size: 16, weight: .semibold)).padding(.top, 6)
                     VStack(spacing: 0) {
                         ForEach(porCarteira) { item in
                             LinhaStat(titulo: item.nome.isEmpty ? "Sem carteira" : item.nome, valor: item.valor.moeda)
@@ -241,7 +254,7 @@ struct TodasTransacoesView: View {
                         ForEach(grupo.itens) { t in
                             HStack {
                                 VStack(alignment: .leading, spacing: 3) {
-                                    Text(t.titulo).font(.system(size: 17, weight: .semibold))
+                                    Text(t.titulo).font(.system(size: 15, weight: .semibold))
                                     Text("\(t.categoria) · \(t.carteira)").font(.footnote).foregroundStyle(.secondary)
                                 }
                                 Spacer()
@@ -251,6 +264,13 @@ struct TodasTransacoesView: View {
                             }
                             .contentShape(Rectangle())
                             .onTapGesture { editando = t }
+                            .contextMenu {
+                                Button { editando = t } label: { Label("Editar", systemImage: "pencil") }
+                                Button(role: .destructive) {
+                                    ctx.delete(t)
+                                    try? ctx.save()
+                                } label: { Label("Apagar", systemImage: "trash") }
+                            }
                             .swipeActions {
                                 Button("Apagar", role: .destructive) {
                                     ctx.delete(t)

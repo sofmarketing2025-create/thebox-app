@@ -47,12 +47,12 @@ struct ConfigView: View {
                 Button { folha = .nome } label: {
                     HStack(spacing: 18) {
                         Text(iniciais)
-                            .font(.system(size: 24, weight: .bold))
+                            .font(.system(size: 21, weight: .bold))
                             .foregroundStyle(Color.sobreDestaque)
                             .frame(width: 72, height: 72)
                             .background(Color.destaque, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
                         VStack(alignment: .leading, spacing: 4) {
-                            Text(nome.isEmpty ? "Seu nome" : nome).font(.system(size: 20, weight: .semibold))
+                            Text(nome.isEmpty ? "Seu nome" : nome).font(.system(size: 18, weight: .semibold))
                             Text("Toque para editar").foregroundStyle(.secondary)
                         }
                         Spacer()
@@ -236,7 +236,7 @@ struct LinhaConfig: View {
         Button(action: acao) {
             HStack(spacing: 10) {
                 Text(titulo)
-                    .font(.system(size: 17))
+                    .font(.system(size: 15))
                     .foregroundStyle(perigo ? Color.red : Color.primary)
                     .lineLimit(1)
                 Spacer()
@@ -247,7 +247,7 @@ struct LinhaConfig: View {
                     Image(systemName: "chevron.right").font(.system(size: 14, weight: .semibold)).foregroundStyle(.secondary)
                 }
             }
-            .padding(.vertical, 18)
+            .padding(.vertical, 15)
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
@@ -264,10 +264,10 @@ struct NomeSheet: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Text("Seu nome").font(.system(size: 24, weight: .bold))
+            Text("Seu nome").font(.system(size: 21, weight: .bold))
             Text("Como você quer ser chamado no app").foregroundStyle(.secondary)
             TextField("Seu nome", text: $texto)
-                .font(.system(size: 26, weight: .bold))
+                .font(.system(size: 23, weight: .bold))
                 .textContentType(.name)
                 .focused($foco)
                 .padding(.vertical, 22)
@@ -298,7 +298,7 @@ struct TemaSheet: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            Text("Aparência").font(.system(size: 24, weight: .bold)).padding(.bottom, 12)
+            Text("Aparência").font(.system(size: 21, weight: .bold)).padding(.bottom, 12)
             ForEach(opcoes.indices, id: \.self) { i in
                 let o = opcoes[i]
                 Button {
@@ -307,7 +307,7 @@ struct TemaSheet: View {
                 } label: {
                     HStack(spacing: 16) {
                         Image(systemName: o.2).frame(width: 26)
-                        Text(o.1).font(.system(size: 18))
+                        Text(o.1).font(.system(size: 16))
                         Spacer()
                         if tema == o.0 { Image(systemName: "checkmark") }
                     }
@@ -330,15 +330,15 @@ struct MoedaSheet: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 0) {
-                Text("Moeda padrão").font(.system(size: 24, weight: .bold)).padding(.bottom, 12)
+                Text("Moeda padrão").font(.system(size: 21, weight: .bold)).padding(.bottom, 12)
                 ForEach(Moeda.allCases) { m in
                     Button {
                         moeda = m.rawValue
                         dismiss()
                     } label: {
                         HStack(spacing: 16) {
-                            Text(m.simbolo).font(.system(size: 18, weight: .bold)).frame(width: 60, alignment: .leading)
-                            Text(m.nome).font(.system(size: 18))
+                            Text(m.simbolo).font(.system(size: 16, weight: .bold)).frame(width: 60, alignment: .leading)
+                            Text(m.nome).font(.system(size: 16))
                             Spacer()
                             if moeda == m.rawValue {
                                 Image(systemName: "checkmark")
@@ -371,7 +371,7 @@ struct CategoriasSheet: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 0) {
                 Text(tipo == .gasto ? "Categorias de gasto" : "Categorias de receita")
-                    .font(.system(size: 24, weight: .bold))
+                    .font(.system(size: 21, weight: .bold))
                     .padding(.bottom, 16)
                 HStack(spacing: 12) {
                     TextField("Nova categoria...", text: $nova)
@@ -380,7 +380,7 @@ struct CategoriasSheet: View {
                         .campo()
                     Button(action: adicionar) {
                         Image(systemName: "plus")
-                            .font(.system(size: 20, weight: .medium))
+                            .font(.system(size: 18, weight: .medium))
                             .foregroundStyle(Color.sobreDestaque)
                             .frame(width: 60, height: 58)
                             .background(Color.destaque, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
@@ -392,7 +392,7 @@ struct CategoriasSheet: View {
                 ForEach(lista) { c in
                     HStack(spacing: 14) {
                         Image(systemName: c.icone).frame(width: 24).foregroundStyle(.secondary)
-                        Text(c.nome).font(.system(size: 18))
+                        Text(c.nome).font(.system(size: 16))
                         Spacer()
                         if tipo == .gasto {
                             Button(c.essencial ? "essencial" : "desejo") {
@@ -407,7 +407,7 @@ struct CategoriasSheet: View {
                             ctx.delete(c)
                             try? ctx.save()
                         } label: {
-                            Image(systemName: "xmark.circle.fill").font(.system(size: 22)).foregroundStyle(.secondary)
+                            Image(systemName: "xmark.circle.fill").font(.system(size: 19)).foregroundStyle(.secondary)
                         }
                         .buttonStyle(.plain)
                     }
@@ -447,7 +447,7 @@ struct CarteirasSheet: View {
 
         ScrollView {
             VStack(alignment: .leading, spacing: 0) {
-                Text("Carteiras").font(.system(size: 26, weight: .bold)).padding(.bottom, 20)
+                Text("Carteiras").font(.system(size: 23, weight: .bold)).padding(.bottom, 20)
                 if let principal {
                     CartaoCarteira(carteira: principal, aberto: true)
                         .onLongPressGesture { removendo = principal }
@@ -495,8 +495,8 @@ struct CartaoCarteira: View {
     var body: some View {
         VStack(alignment: .leading) {
             HStack(spacing: 14) {
-                Image(systemName: carteira.tipo.icone).font(.system(size: 22, weight: .semibold))
-                Text(carteira.nome).font(.system(size: 22, weight: .bold)).lineLimit(1)
+                Image(systemName: carteira.tipo.icone).font(.system(size: 19, weight: .semibold))
+                Text(carteira.nome).font(.system(size: 19, weight: .bold)).lineLimit(1)
                 Spacer()
             }
             if aberto {
@@ -538,7 +538,7 @@ struct NovaCarteiraSheet: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
-            Text("Novo meio de pagamento").font(.system(size: 24, weight: .bold))
+            Text("Novo meio de pagamento").font(.system(size: 21, weight: .bold))
             TextField("Nome (ex.: Nubank, Inter)", text: $nome).campo()
             Picker("Tipo", selection: $tipo) {
                 ForEach(TipoCarteira.allCases) { t in Text(t.nome).tag(t) }
@@ -604,7 +604,7 @@ struct GuiaView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 18) {
                 HStack {
-                    Text(titulo).font(.system(size: 26, weight: .bold))
+                    Text(titulo).font(.system(size: 23, weight: .bold))
                     Spacer()
                     BotaoFechar { dismiss() }
                 }
@@ -615,7 +615,7 @@ struct GuiaView: View {
                             .foregroundStyle(Color.sobreDestaque)
                             .frame(width: 28, height: 28)
                             .background(Color.destaque, in: Circle())
-                        Text(passos[i]).font(.system(size: 17))
+                        Text(passos[i]).font(.system(size: 15))
                     }
                 }
             }

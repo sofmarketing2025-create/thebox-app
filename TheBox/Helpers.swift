@@ -137,7 +137,7 @@ struct EstiloCampo: ViewModifier {
     func body(content: Content) -> some View {
         content
             .padding(.horizontal, 20)
-            .frame(height: 58)
+            .frame(height: 54)
             .background(Color.cartao2.opacity(0.55), in: RoundedRectangle(cornerRadius: 20, style: .continuous))
             .overlay(RoundedRectangle(cornerRadius: 20, style: .continuous).stroke(Color.borda))
     }
@@ -147,10 +147,10 @@ struct EstiloPrincipal: ButtonStyle {
     var ativo = true
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
-            .font(.system(size: 18, weight: .semibold))
+            .font(.system(size: 16, weight: .semibold))
             .foregroundStyle(Color.sobreDestaque)
             .frame(maxWidth: .infinity)
-            .frame(height: 58)
+            .frame(height: 54)
             .background(Color.destaque.opacity(ativo ? 1 : 0.35), in: Capsule())
             .opacity(configuration.isPressed ? 0.8 : 1)
     }
@@ -160,10 +160,10 @@ struct EstiloContorno: ButtonStyle {
     var ativo = true
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
-            .font(.system(size: 18, weight: .semibold))
+            .font(.system(size: 16, weight: .semibold))
             .foregroundStyle(Color.primary.opacity(ativo ? 1 : 0.4))
             .frame(maxWidth: .infinity)
-            .frame(height: 58)
+            .frame(height: 54)
             .overlay(Capsule().stroke(Color.primary.opacity(ativo ? 0.35 : 0.15), lineWidth: 1.5))
             .opacity(configuration.isPressed ? 0.7 : 1)
     }
@@ -179,7 +179,7 @@ extension View {
             .presentationDragIndicator(.visible)
     }
     func tituloGrande() -> some View {
-        self.font(.system(size: 38, weight: .heavy)).tracking(-1.2)
+        self.font(.system(size: 32, weight: .heavy)).tracking(-1.2)
     }
 }
 
@@ -192,10 +192,10 @@ struct Cabecalho<Acoes: View>: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 2) {
-            Text(sub).font(.system(size: 17)).foregroundStyle(.secondary)
+            Text(sub).font(.system(size: 15)).foregroundStyle(.secondary)
             HStack(spacing: 10) {
                 Text(titulo)
-                    .font(.system(size: 36, weight: .heavy)).tracking(-0.8)
+                    .font(.system(size: 30, weight: .heavy)).tracking(-0.8)
                     .lineLimit(1).minimumScaleFactor(0.6)
                 Spacer(minLength: 4)
                 acoes()
@@ -217,9 +217,9 @@ struct BotaoCirculo: View {
     var body: some View {
         Button(action: acao) {
             Image(systemName: icone)
-                .font(.system(size: 20, weight: .medium))
+                .font(.system(size: 18, weight: .medium))
                 .foregroundStyle(.primary)
-                .frame(width: 52, height: 52)
+                .frame(width: 46, height: 46)
                 .background(Color.cartao, in: Circle())
                 .overlay(Circle().stroke(Color.borda))
         }
@@ -233,7 +233,7 @@ struct BotaoFechar: View {
     var body: some View {
         Button(action: acao) {
             Image(systemName: icone)
-                .font(.system(size: 16, weight: .semibold))
+                .font(.system(size: 15, weight: .semibold))
                 .foregroundStyle(.primary)
                 .frame(width: 44, height: 44)
                 .background(Color.cartao2.opacity(0.6), in: Circle())
@@ -248,12 +248,12 @@ struct SeletorMes: View {
     var body: some View {
         Button { aberto = true } label: {
             HStack(spacing: 6) {
-                Text(Mes.curto(mes).uppercased()).font(.system(size: 15, weight: .bold)).tracking(1.5)
+                Text(Mes.curto(mes).uppercased()).font(.system(size: 14, weight: .bold)).tracking(1.5)
                 Image(systemName: "chevron.down").font(.system(size: 12, weight: .bold))
             }
             .foregroundStyle(.primary)
             .padding(.horizontal, 18)
-            .frame(height: 46)
+            .frame(height: 42)
             .background(Color.cartao, in: Capsule())
             .overlay(Capsule().stroke(Color.borda))
         }
@@ -276,10 +276,10 @@ struct SeletorMesSheet: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 0) {
                 HStack {
-                    Text("Selecionar mês").font(.system(size: 24, weight: .bold))
+                    Text("Selecionar mês").font(.system(size: 21, weight: .bold))
                     Spacer()
                     Button { ano -= 1 } label: { Image(systemName: "chevron.left").padding(8) }
-                    Text(String(ano)).font(.system(size: 18, weight: .bold)).frame(width: 60)
+                    Text(String(ano)).font(.system(size: 16, weight: .bold)).frame(width: 60)
                     Button { ano += 1 } label: { Image(systemName: "chevron.right").padding(8) }
                 }
                 .buttonStyle(.plain)
@@ -293,7 +293,7 @@ struct SeletorMesSheet: View {
                     } label: {
                         HStack {
                             Text(Mes.nomes[m])
-                                .font(.system(size: 18, weight: i == mes ? .bold : .regular))
+                                .font(.system(size: 16, weight: i == mes ? .bold : .regular))
                                 .foregroundStyle(i == mes ? Color.primary : Color.secondary)
                             Spacer()
                             if i == mes { Image(systemName: "checkmark") }
@@ -336,9 +336,9 @@ struct ChipOpcao: View {
     var body: some View {
         Button(action: acao) {
             HStack(spacing: 10) {
-                if let icone { Image(systemName: icone).font(.system(size: 15)) }
+                if let icone { Image(systemName: icone).font(.system(size: 14)) }
                 Text(texto)
-                    .font(.system(size: 16, weight: selecionado ? .semibold : .regular))
+                    .font(.system(size: 15, weight: selecionado ? .semibold : .regular))
                     .lineLimit(1).minimumScaleFactor(0.8)
             }
             .foregroundStyle(selecionado ? Color.sobreDestaque : Color.secondary)
@@ -384,7 +384,7 @@ struct Vazio: View {
     var body: some View {
         VStack(spacing: 10) {
             Image(systemName: icone).font(.system(size: 30)).foregroundStyle(.secondary)
-            Text(titulo).font(.system(size: 18, weight: .semibold))
+            Text(titulo).font(.system(size: 16, weight: .semibold))
             Text(texto).font(.subheadline).foregroundStyle(.secondary).multilineTextAlignment(.center)
         }
         .frame(maxWidth: .infinity)
@@ -462,7 +462,7 @@ struct LinhaToggle: View {
     var body: some View {
         Toggle(isOn: $ligado) {
             VStack(alignment: .leading, spacing: 3) {
-                Text(titulo).font(.system(size: 17))
+                Text(titulo).font(.system(size: 15))
                 if let sub { Text(sub).font(.footnote).foregroundStyle(.secondary) }
             }
         }
@@ -489,12 +489,12 @@ struct EditarValorSheet: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Text(titulo).font(.system(size: 24, weight: .bold))
+            Text(titulo).font(.system(size: 21, weight: .bold))
             Text(subtitulo).foregroundStyle(.secondary)
             HStack(spacing: 12) {
-                Text(Moeda.atual.simbolo).font(.system(size: 32, weight: .bold)).foregroundStyle(.secondary)
+                Text(Moeda.atual.simbolo).font(.system(size: 28, weight: .bold)).foregroundStyle(.secondary)
                 TextField("0", text: $texto)
-                    .font(.system(size: 40, weight: .bold))
+                    .font(.system(size: 34, weight: .bold))
                     .keyboardType(.decimalPad)
                     .focused($foco)
             }

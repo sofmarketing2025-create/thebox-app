@@ -111,7 +111,7 @@ struct RegistroSheet: View {
                 withAnimation { mostrarData.toggle() }
             } label: {
                 Label(textoData, systemImage: "calendar")
-                    .font(.system(size: 15, weight: .semibold))
+                    .font(.system(size: 14, weight: .semibold))
                     .padding(.horizontal, 14)
                     .frame(height: 38)
                     .background(Color.cartao2.opacity(0.6), in: Capsule())
@@ -131,7 +131,7 @@ struct RegistroSheet: View {
 
     private var campoValor: some View {
         VStack(spacing: 2) {
-            Text(Moeda.atual.simbolo).font(.system(size: 17)).foregroundStyle(.secondary)
+            Text(Moeda.atual.simbolo).font(.system(size: 15)).foregroundStyle(.secondary)
             ZStack {
                 TextField("", text: $digitos)
                     .keyboardType(.numberPad)
@@ -139,7 +139,7 @@ struct RegistroSheet: View {
                     .opacity(0.02)
                     .frame(width: 2, height: 2)
                 Text(valor.formatted(.number.precision(.fractionLength(2)).locale(ptBR)))
-                    .font(.system(size: 70, weight: .heavy)).tracking(-2.5)
+                    .font(.system(size: 58, weight: .heavy)).tracking(-2.5)
                     .lineLimit(1).minimumScaleFactor(0.5)
                     .foregroundStyle(valor > 0 ? Color.primary : Color.secondary.opacity(0.45))
             }
@@ -228,7 +228,7 @@ struct SeletorTipo: View {
                     withAnimation(.snappy(duration: 0.25)) { tipo = t }
                 } label: {
                     Text(t.nome)
-                        .font(.system(size: 18, weight: .semibold))
+                        .font(.system(size: 16, weight: .semibold))
                         .foregroundStyle(tipo == t ? Color.sobreDestaque : Color.secondary)
                         .frame(maxWidth: .infinity)
                         .frame(height: 50)

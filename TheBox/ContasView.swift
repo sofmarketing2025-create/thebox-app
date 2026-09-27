@@ -40,10 +40,10 @@ struct ContasView: View {
 
                 HStack(alignment: .firstTextBaseline) {
                     Text(mes == Mes.indice() ? "Este mês" : Mes.nome(mes))
-                        .font(.system(size: 24, weight: .bold))
+                        .font(.system(size: 21, weight: .bold))
                     Spacer()
                     Text("\(quantidade) \(quantidade == 1 ? "conta" : "contas")")
-                        .font(.system(size: 18))
+                        .font(.system(size: 16))
                         .foregroundStyle(.secondary)
                 }
                 .padding(.top, 12)
@@ -70,6 +70,16 @@ struct ContasView: View {
                             }
                         }
                         .onTapGesture { editando = conta }
+                        .contextMenu {
+                            Button { editando = conta } label: { Label("Editar", systemImage: "pencil") }
+                            Button(role: .destructive) {
+                                withAnimation {
+                                    ctx.delete(conta)
+                                    try? ctx.save()
+                                }
+                                Notificacoes.reagendar(ctx)
+                            } label: { Label("Apagar conta (todos os meses)", systemImage: "trash") }
+                        }
                     }
                 }
             }
@@ -113,7 +123,7 @@ struct ResumoCard: View {
                     .tracking(2.5)
                     .foregroundStyle(.secondary)
                 Text(total.moeda)
-                    .font(.system(size: 36, weight: .heavy))
+                    .font(.system(size: 30, weight: .heavy))
                     .lineLimit(1)
                     .minimumScaleFactor(0.6)
                     .padding(.top, 4)
@@ -133,7 +143,7 @@ struct ResumoCard: View {
                     .rotationEffect(.degrees(-90))
                     .animation(.easeOut(duration: 0.5), value: p)
                 VStack(spacing: 0) {
-                    Text("\(Int((p * 100).rounded()))%").font(.system(size: 24, weight: .bold))
+                    Text("\(Int((p * 100).rounded()))%").font(.system(size: 21, weight: .bold))
                     Text("pago").font(.footnote).foregroundStyle(.secondary)
                 }
             }
@@ -151,7 +161,7 @@ struct GraficoMeses: View {
         let maxV = max(dados.map(\.valor).max() ?? 0, 1)
         VStack(alignment: .leading, spacing: 12) {
             Text("Total de contas por mês")
-                .font(.system(size: 15, weight: .semibold))
+                .font(.system(size: 14, weight: .semibold))
                 .foregroundStyle(.secondary)
 
             Chart {
@@ -219,14 +229,14 @@ struct LinhaConta: View {
     var body: some View {
         HStack(spacing: 14) {
             Image(systemName: icone)
-                .font(.system(size: 20, weight: .semibold))
+                .font(.system(size: 18, weight: .semibold))
                 .foregroundStyle(Color.sobreDestaque)
                 .frame(width: 56, height: 56)
                 .background(Color.destaque, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
 
             VStack(alignment: .leading, spacing: 6) {
                 HStack(spacing: 8) {
-                    Text(conta.nome).font(.system(size: 18, weight: .semibold)).lineLimit(1)
+                    Text(conta.nome).font(.system(size: 16, weight: .semibold)).lineLimit(1)
                     if let parcela = conta.parcela(em: mes) { Chip(parcela) }
                 }
                 HStack(spacing: 8) {
@@ -242,7 +252,7 @@ struct LinhaConta: View {
             Spacer(minLength: 4)
 
             VStack(alignment: .trailing, spacing: 8) {
-                Text(conta.valor.moeda).font(.system(size: 17, weight: .bold)).lineLimit(1)
+                Text(conta.valor.moeda).font(.system(size: 15, weight: .bold)).lineLimit(1)
                 BotaoStatus(pago: conta.pago(em: mes), atrasada: conta.atrasada(em: mes), acao: alternar)
             }
         }
@@ -272,12 +282,12 @@ struct LinhaFatura: View {
         let atrasada = !pago && Mes.data(mes, dia: cartao.diaVencimento, hora: 23) < .now
         HStack(spacing: 14) {
             Image(systemName: "creditcard.fill")
-                .font(.system(size: 20, weight: .semibold))
+                .font(.system(size: 18, weight: .semibold))
                 .foregroundStyle(Color.sobreDestaque)
                 .frame(width: 56, height: 56)
                 .background(Color.destaque, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
             VStack(alignment: .leading, spacing: 6) {
-                Text("Fatura \(cartao.nome)").font(.system(size: 18, weight: .semibold)).lineLimit(1)
+                Text("Fatura \(cartao.nome)").font(.system(size: 16, weight: .semibold)).lineLimit(1)
                 HStack(spacing: 8) {
                     Chip("Fatura")
                     Text("Vence dia \(String(format: "%02d", cartao.diaVencimento))")
@@ -286,7 +296,7 @@ struct LinhaFatura: View {
             }
             Spacer(minLength: 4)
             VStack(alignment: .trailing, spacing: 8) {
-                Text(valor.moeda).font(.system(size: 17, weight: .bold)).lineLimit(1)
+                Text(valor.moeda).font(.system(size: 15, weight: .bold)).lineLimit(1)
                 BotaoStatus(pago: pago, atrasada: atrasada, acao: alternar)
             }
         }

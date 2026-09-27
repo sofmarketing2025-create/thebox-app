@@ -103,9 +103,9 @@ struct CartaoOrcamento: View {
             .font(.system(size: 13, weight: .semibold)).tracking(1.5)
             .foregroundStyle(.secondary)
             HStack(alignment: .firstTextBaseline) {
-                Text(gasto.moeda).font(.system(size: 34, weight: .heavy)).lineLimit(1).minimumScaleFactor(0.6)
+                Text(gasto.moeda).font(.system(size: 30, weight: .heavy)).lineLimit(1).minimumScaleFactor(0.6)
                 Spacer()
-                Text(limite > 0 ? porcento(p) : "—").font(.system(size: 34, weight: .heavy))
+                Text(limite > 0 ? porcento(p) : "—").font(.system(size: 30, weight: .heavy))
             }
             BarraProgresso(p: p, cor: limite > 0 ? corPorcentagem(p) : .primary, altura: 5)
                 .padding(.vertical, 10)
@@ -113,7 +113,7 @@ struct CartaoOrcamento: View {
                 Text(limite > 0
                      ? "\(gasto.moeda) de \(limite.moedaInteira) em \(Mes.nome(mes).lowercased()) · editar"
                      : "Defina um limite para \(Mes.nome(mes).lowercased()) · editar")
-                    .font(.system(size: 15))
+                    .font(.system(size: 14))
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
                     .minimumScaleFactor(0.8)
@@ -141,7 +141,7 @@ struct CartaoComparacao: View {
                     Image(systemName: d <= 0 ? "arrow.down.right" : "arrow.up.right")
                         .foregroundStyle(d <= 0 ? Color.green : Color.orange)
                     Text("\(porcento(abs(d))) \(d <= 0 ? "a menos" : "a mais")")
-                        .font(.system(size: 24, weight: .bold))
+                        .font(.system(size: 21, weight: .bold))
                     Text("que \(Mes.nome(mes - 1).lowercased())").foregroundStyle(.secondary)
                 }
                 Text("\(anterior.moeda) em \(Mes.nome(mes - 1).lowercased()) · \(atual.moeda) em \(Mes.nome(mes).lowercased())")
@@ -164,14 +164,14 @@ struct LinhaMeta: View {
         let ativo = gasto > 0
         HStack(spacing: 16) {
             AnelProgresso(p: p, tamanho: 60, linha: 4, cor: corPorcentagem(p))
-            Text(categoria.nome).font(.system(size: 18, weight: .medium)).lineLimit(1)
+            Text(categoria.nome).font(.system(size: 16, weight: .medium)).lineLimit(1)
             Spacer(minLength: 6)
             HStack(spacing: 0) {
                 if ativo { Text(gasto.moeda).fontWeight(.semibold) }
                 Text(categoria.limite > 0 ? " / \(categoria.limite.moedaInteira)" : " / sem limite")
                     .foregroundStyle(.secondary)
             }
-            .font(.system(size: 16))
+            .font(.system(size: 15))
             .lineLimit(1)
             .minimumScaleFactor(0.7)
         }
@@ -186,7 +186,7 @@ struct Historico: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
             Text("Gastos nos últimos 6 meses")
-                .font(.system(size: 15, weight: .semibold))
+                .font(.system(size: 14, weight: .semibold))
                 .foregroundStyle(.secondary)
             Chart(dados) { p in
                 BarMark(x: .value("Mês", Mes.curto(p.mes)), y: .value("Total", p.valor), width: 22)
