@@ -35,19 +35,25 @@ struct RegistrarGastoIntent: AppIntent {
     @Parameter(title: "Valor")
     var valor: Double
 
-    @Parameter(title: "Categoria", optionsProvider: OpcoesCategoria())
-    var categoria: String
-
-    @Parameter(title: "Pagamento", optionsProvider: OpcoesCarteira())
-    var pagamento: String
-
     @Parameter(title: "Onde foi?")
     var descricao: String?
 
+    @Parameter(title: "Cartão")
+    var cartao: String?
+
+    /// Vazio = o app escolhe sozinho pelo nome do lugar
+    @Parameter(title: "Categoria", optionsProvider: OpcoesCategoria())
+    var categoria: String?
+
+    /// Vazio = o app usa o cartão informado
+    @Parameter(title: "Pagamento", optionsProvider: OpcoesCarteira())
+    var pagamento: String?
+
     static var parameterSummary: some ParameterSummary {
-        Summary("Registrar \(\.$valor) em \(\.$categoria)") {
+        Summary("Registrar \(\.$valor) em \(\.$descricao)") {
+            \.$cartao
+            \.$categoria
             \.$pagamento
-            \.$descricao
         }
     }
 
@@ -57,12 +63,14 @@ struct RegistrarGastoIntent: AppIntent {
             throw ErroAtalho(texto: "Entre no LBO Finanças primeiro.")
         }
         let ctx = container.mainContext
-        let desc = (descricao ?? "").trimmingCharacters(in: .whitespaces)
-        ctx.insert(Transacao(tipo: .gasto, valor: valor, categoria: categoria, carteira: pagamento, descricao: desc))
+        let desc = (descricao ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+        let cat = (categoria ?? "").isEmpty ? Categorizador.categoria(para: desc, ctx: ctx) : (categoria ?? "")
+        let pag = (pagamento ?? "").isEmpty ? Categorizador.carteira(para: cartao, ctx: ctx) : (pagamento ?? "")
+        ctx.insert(Transacao(tipo: .gasto, valor: abs(valor), categoria: cat, carteira: pag, descricao: desc))
         try ctx.save()
-        // Mesmo aviso do app: "R$ 20,00 registrado — Teste · Alimentação"
-        Notificacoes.registrado(valor: valor, titulo: desc.isEmpty ? "Gasto" : desc, categoria: categoria)
-        Notificacoes.verificarLimite(categoria: categoria, valor: valor, data: .now, ctx: ctx)
+        // Mesmo aviso do app: "R$ 20,00 registrado — Drogasil · Saúde"
+        Notificacoes.registrado(valor: abs(valor), titulo: desc.isEmpty ? "Gasto" : desc, categoria: cat)
+        Notificacoes.verificarLimite(categoria: cat, valor: abs(valor), data: .now, ctx: ctx)
         Notificacoes.reagendar(ctx)
         return .result()
     }

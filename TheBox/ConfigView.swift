@@ -589,11 +589,13 @@ struct GuiaView: View {
                 "Abra o app Atalhos e vá em Automação.",
                 "Toque em + e escolha \"Transação\".",
                 "Selecione seus cartões da Carteira, marque \"Executar Imediatamente\" e avance.",
-                "Adicione a ação \"Registrar gasto\" do LBO Finanças.",
-                "Em Valor, escolha a variável da transação que traz o valor da compra (Quantia).",
-                "Em \"Onde foi?\", escolha a variável do estabelecimento (Comerciante) ou \"Perguntar Sempre\".",
-                "Em Categoria e Pagamento, escolha \"Perguntar Sempre\".",
-                "Salve. Na próxima compra por aproximação com o iPhone, o gasto é registrado."
+                "Adicione a ação \"Registrar gasto\" do LBO Finanças e toque na seta pra ver todos os campos.",
+                "Valor: escolha a variável \"Quantia\" da transação.",
+                "Onde foi?: escolha a variável \"Comerciante\".",
+                "Cartão: escolha a variável \"Cartão\".",
+                "Deixe Categoria e Pagamento em branco: o app escolhe sozinho pelo nome do lugar e pelo cartão.",
+                "Salve. Na próxima compra por aproximação, o gasto entra sozinho, sem abrir nenhuma pergunta.",
+                "Categoria errada? Toque na transação e corrija uma vez: das próximas vezes, o app lembra."
             ]
         }
     }
