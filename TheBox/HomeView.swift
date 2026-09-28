@@ -72,11 +72,7 @@ struct HomeView: View {
     }
 
     private func apagar(_ t: Transacao) {
-        withAnimation {
-            ctx.delete(t)
-            try? ctx.save()
-        }
-        Notificacoes.reagendar(ctx)
+        Exclusao.transacao(t, ctx: ctx)
     }
 
     private func iconeCarteira(_ nome: String) -> String {
@@ -267,14 +263,12 @@ struct TodasTransacoesView: View {
                             .contextMenu {
                                 Button { editando = t } label: { Label("Editar", systemImage: "pencil") }
                                 Button(role: .destructive) {
-                                    ctx.delete(t)
-                                    try? ctx.save()
+                                    Exclusao.transacao(t, ctx: ctx)
                                 } label: { Label("Apagar", systemImage: "trash") }
                             }
                             .swipeActions {
                                 Button("Apagar", role: .destructive) {
-                                    ctx.delete(t)
-                                    try? ctx.save()
+                                    Exclusao.transacao(t, ctx: ctx)
                                 }
                             }
                         }
@@ -285,6 +279,10 @@ struct TodasTransacoesView: View {
             .scrollContentBackground(.hidden)
             .background(Color.fundo)
             .searchable(text: $busca, prompt: "Buscar")
+            .safeAreaInset(edge: .bottom) {
+                BarraDesfazer().padding(.bottom, 8)
+            }
+            .animation(.snappy, value: AppState.shared.desfazer?.id)
             .navigationTitle("Transações")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {

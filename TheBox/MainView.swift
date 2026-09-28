@@ -40,9 +40,13 @@ struct MainView: View {
         ZStack {
             conteudo
                 .safeAreaInset(edge: .bottom) {
-                    BarraAbas(aba: $aba)
-                        .padding(.horizontal, 18)
-                        .padding(.bottom, 2)
+                    VStack(spacing: 10) {
+                        BarraDesfazer()
+                        BarraAbas(aba: $aba)
+                            .padding(.horizontal, 18)
+                            .padding(.bottom, 2)
+                    }
+                    .animation(.snappy, value: estado.desfazer?.id)
                 }
             if let passo = estado.tourPasso {
                 TourOverlay(passo: passo, avancar: {

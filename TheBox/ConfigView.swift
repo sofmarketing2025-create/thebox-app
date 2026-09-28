@@ -186,7 +186,9 @@ struct ConfigView: View {
 struct DiasAvisoEditor: View {
     var mudou: () -> Void
     @State private var dias: [Int] = Notificacoes.diasAviso()
-    private let opcoes = [1, 2, 3, 5, 7, 10, 15]
+    @State private var pedindo = false
+    @State private var texto = ""
+    private let opcoes = [1, 2, 3, 5, 7, 10, 15, 30]
 
     private func nome(_ d: Int) -> String { d == 1 ? "1 dia" : "\(d) dias" }
 
@@ -213,21 +215,38 @@ struct DiasAvisoEditor: View {
                         .background(Color.cartao2, in: Capsule())
                     }
                     let restantes = opcoes.filter { !dias.contains($0) }
-                    if !restantes.isEmpty {
-                        Menu {
-                            ForEach(restantes, id: \.self) { d in
-                                Button(nome(d) + " antes") { atualizar(dias + [d]) }
-                            }
+                    Menu {
+                        ForEach(restantes, id: \.self) { d in
+                            Button(nome(d) + " antes") { atualizar(dias + [d]) }
+                        }
+                        Divider()
+                        Button {
+                            pedindo = true
                         } label: {
+                            Label("Outro número de dias...", systemImage: "pencil")
+                        }
+                    } label: {
                             Image(systemName: "plus")
                                 .font(.system(size: 14, weight: .semibold))
                                 .foregroundStyle(Color.sobreDestaque)
                                 .frame(width: 34, height: 34)
                                 .background(Color.destaque, in: Circle())
-                        }
                     }
                 }
             }
+        }
+        .alert("Quantos dias antes?", isPresented: $pedindo) {
+            TextField("Ex.: 60", text: $texto)
+                .keyboardType(.numberPad)
+            Button("Adicionar") {
+                if let n = Int(texto.trimmingCharacters(in: .whitespaces)), n > 0, n <= 365 {
+                    atualizar(dias + [n])
+                }
+                texto = ""
+            }
+            Button("Cancelar", role: .cancel) { texto = "" }
+        } message: {
+            Text("Você recebe um aviso esse número de dias antes de cada vencimento (até 365).")
         }
     }
 

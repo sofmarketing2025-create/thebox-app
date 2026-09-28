@@ -115,6 +115,11 @@ final class Transacao {
     var tipo: TipoTransacao { TipoTransacao(rawValue: tipoRaw) ?? .gasto }
     var mes: Int { Mes.indice(data) }
     var titulo: String { descricao.isEmpty ? categoria : descricao }
+
+    /// Cópia solta (ainda não salva), usada pra desfazer uma exclusão
+    func copia() -> Transacao {
+        Transacao(tipo: tipo, valor: valor, categoria: categoria, carteira: carteira, descricao: descricao, data: data)
+    }
 }
 
 @Model
@@ -134,6 +139,8 @@ final class Conta {
     var inicio: Int = 0
     /// Pagamentos no formato "2026-10|Nubank"
     var pagamentos: [String] = []
+    /// Meses apagados só daquele mês ("apagar só essa"), formato "2026-10"
+    var excluidos: [String] = []
 
     init(nome: String, valor: Double, dia: Int, venceMesSeguinte: Bool, categoria: String,
          repetir: Bool, parcelaAtual: Int, totalParcelas: Int, inicio: Int) {
@@ -151,7 +158,10 @@ final class Conta {
     var parcelada: Bool { totalParcelas > 0 }
     var tipoNome: String { parcelada ? "Parcelado" : (repetir ? "Fixo" : "Única") }
 
+    var recorrente: Bool { parcelada || repetir }
+
     func ocorre(em i: Int) -> Bool {
+        if excluidos.contains(Mes.chave(i)) { return false }
         let d = i - inicio
         if d < 0 { return false }
         if parcelada { return max(parcelaAtual, 1) + d <= totalParcelas }
@@ -179,6 +189,25 @@ final class Conta {
     func desmarcar(em i: Int) {
         let prefixo = Mes.chave(i) + "|"
         pagamentos.removeAll { $0.hasPrefix(prefixo) }
+    }
+
+    /// Tira a conta só desse mês (os outros continuam)
+    func excluir(em i: Int) {
+        let k = Mes.chave(i)
+        if !excluidos.contains(k) { excluidos.append(k) }
+    }
+
+    func restaurar(em i: Int) {
+        excluidos.removeAll { $0 == Mes.chave(i) }
+    }
+
+    /// Cópia solta (ainda não salva), usada pra desfazer uma exclusão
+    func copia() -> Conta {
+        let c = Conta(nome: nome, valor: valor, dia: dia, venceMesSeguinte: venceMesSeguinte, categoria: categoria,
+                      repetir: repetir, parcelaAtual: parcelaAtual, totalParcelas: totalParcelas, inicio: inicio)
+        c.pagamentos = pagamentos
+        c.excluidos = excluidos
+        return c
     }
 
     func vencimento(em i: Int, hora: Int = 9) -> Date {

@@ -81,7 +81,9 @@ enum Notificacoes {
 
         if ligado("avisoContas") {
             let hoje = Mes.indice()
-            for i in hoje...(hoje + 2) {
+            // Olha meses suficientes pra caber o aviso mais antecipado (ex.: 90 dias antes)
+            let meses = max(2, (dias.max() ?? 0) / 30 + 2)
+            for i in hoje...(hoje + meses) {
                 var itens: [(nome: String, valor: Double, venc: Date, fatura: Bool)] = []
                 for conta in contas where conta.ocorre(em: i) && !conta.pago(em: i) {
                     itens.append((conta.nome, conta.valor, conta.vencimento(em: i, hora: hora), false))

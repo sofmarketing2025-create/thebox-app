@@ -6,6 +6,8 @@ struct FormContaView: View {
     @Environment(\.modelContext) private var ctx
     @Query(sort: \Categoria.ordem) private var categorias: [Categoria]
     let conta: Conta?
+    /// Mês que estava aberto na aba Contas (usado no "excluir só deste mês")
+    let mesInicial: Int
 
     @State private var nome: String
     @State private var valorTexto: String
@@ -20,6 +22,7 @@ struct FormContaView: View {
 
     init(conta: Conta?, mesInicial: Int) {
         self.conta = conta
+        self.mesInicial = mesInicial
         _nome = State(initialValue: conta?.nome ?? "")
         _valorTexto = State(initialValue: conta?.valor.textoCampo ?? "")
         _diaTexto = State(initialValue: conta.map { String($0.dia) } ?? "")
@@ -118,12 +121,16 @@ struct FormContaView: View {
                     Button("Cancelar") { dismiss() }.foregroundStyle(.secondary)
                 }
             }
-            .confirmationDialog("Excluir esta conta de todos os meses?",
+            .confirmationDialog("Excluir esta conta?",
                                 isPresented: $confirmarExclusao, titleVisibility: .visible) {
-                Button("Excluir", role: .destructive) {
-                    if let conta { ctx.delete(conta) }
-                    try? ctx.save()
-                    Notificacoes.reagendar(ctx)
+                if let conta, conta.recorrente {
+                    Button("Só de \(Mes.nome(mesInicial).lowercased())", role: .destructive) {
+                        Exclusao.contaSoNoMes(conta, mes: mesInicial, ctx: ctx)
+                        dismiss()
+                    }
+                }
+                Button(conta?.recorrente == true ? "Todos os meses" : "Excluir", role: .destructive) {
+                    if let conta { Exclusao.conta(conta, ctx: ctx) }
                     dismiss()
                 }
             }

@@ -11,6 +11,54 @@ final class AppState {
     var abrirRegistro = false
     var tourPasso: Int? = nil
     var bloqueado = UserDefaults.standard.bool(forKey: "faceID")
+
+    struct Desfazer {
+        let id = UUID()
+        let texto: String
+        let acao: () -> Void
+    }
+    /// Última exclusão que ainda dá pra desfazer (some sozinha depois de alguns segundos)
+    var desfazer: Desfazer?
+
+    func oferecerDesfazer(_ texto: String, _ acao: @escaping () -> Void) {
+        let d = Desfazer(texto: texto, acao: acao)
+        desfazer = d
+        Task {
+            try? await Task.sleep(for: .seconds(7))
+            if desfazer?.id == d.id { desfazer = nil }
+        }
+    }
+}
+
+/// Barrinha "Conta apagada · Desfazer"
+struct BarraDesfazer: View {
+    @Environment(AppState.self) private var estado
+
+    var body: some View {
+        if let d = estado.desfazer {
+            HStack(spacing: 12) {
+                Image(systemName: "trash").foregroundStyle(.secondary)
+                Text(d.texto).font(.system(size: 14, weight: .medium)).lineLimit(1)
+                Spacer()
+                Button("Desfazer") {
+                    d.acao()
+                    withAnimation { estado.desfazer = nil }
+                }
+                .font(.system(size: 14, weight: .bold))
+                .foregroundStyle(Color.sobreDestaque)
+                .padding(.horizontal, 14)
+                .frame(height: 32)
+                .background(Color.destaque, in: Capsule())
+            }
+            .padding(.leading, 18)
+            .padding(.trailing, 8)
+            .frame(height: 50)
+            .background(.ultraThinMaterial, in: Capsule())
+            .overlay(Capsule().stroke(Color.borda))
+            .padding(.horizontal, 18)
+            .transition(.move(edge: .bottom).combined(with: .opacity))
+        }
+    }
 }
 
 final class NotifDelegate: NSObject, UNUserNotificationCenterDelegate {

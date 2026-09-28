@@ -72,13 +72,16 @@ struct ContasView: View {
                         .onTapGesture { editando = conta }
                         .contextMenu {
                             Button { editando = conta } label: { Label("Editar", systemImage: "pencil") }
+                            if conta.recorrente {
+                                Button(role: .destructive) {
+                                    Exclusao.contaSoNoMes(conta, mes: mes, ctx: ctx)
+                                } label: { Label("Apagar só de \(Mes.nome(mes).lowercased())", systemImage: "calendar.badge.minus") }
+                            }
                             Button(role: .destructive) {
-                                withAnimation {
-                                    ctx.delete(conta)
-                                    try? ctx.save()
-                                }
-                                Notificacoes.reagendar(ctx)
-                            } label: { Label("Apagar conta (todos os meses)", systemImage: "trash") }
+                                Exclusao.conta(conta, ctx: ctx)
+                            } label: {
+                                Label(conta.recorrente ? "Apagar todos os meses" : "Apagar conta", systemImage: "trash")
+                            }
                         }
                     }
                 }

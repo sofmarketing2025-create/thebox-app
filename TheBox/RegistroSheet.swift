@@ -95,9 +95,7 @@ struct RegistroSheet: View {
         }
         .confirmationDialog("Excluir esta transação?", isPresented: $confirmarExclusao, titleVisibility: .visible) {
             Button("Excluir", role: .destructive) {
-                if let editando { ctx.delete(editando) }
-                try? ctx.save()
-                Notificacoes.reagendar(ctx)
+                if let editando { Exclusao.transacao(editando, ctx: ctx) }
                 dismiss()
             }
         }
