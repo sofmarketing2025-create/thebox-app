@@ -35,7 +35,7 @@ struct OnboardingView: View {
                 if pagina > 0 {
                     Button { withAnimation { pagina -= 1 } } label: {
                         Image(systemName: "chevron.left")
-                            .font(.system(size: 16, weight: .semibold))
+                            .font(.system(size: 15, weight: .semibold))
                             .frame(width: 50, height: 50)
                             .background(Color.cartao, in: Circle())
                     }
@@ -146,7 +146,7 @@ struct OnboardingView: View {
                 } label: {
                     HStack(spacing: 16) {
                         IconeQuadrado(icone: item.0, tamanho: 52)
-                        Text(item.1).font(.system(size: 16, weight: .semibold)).multilineTextAlignment(.leading)
+                        Text(item.1).font(.system(size: 15, weight: .semibold)).multilineTextAlignment(.leading)
                         Spacer()
                         Image(systemName: "chevron.right").foregroundStyle(.secondary)
                     }
@@ -167,9 +167,9 @@ struct OnboardingView: View {
             Text("Qual seu orçamento\nmensal?").tituloGrande()
             Text(fraseObjetivo).foregroundStyle(.secondary).padding(.bottom, 18)
             HStack(spacing: 12) {
-                Text(Moeda.atual.simbolo).font(.system(size: 19, weight: .bold)).foregroundStyle(.secondary)
+                Text(Moeda.atual.simbolo).font(.system(size: 17, weight: .bold)).foregroundStyle(.secondary)
                 TextField("ex: 5.000", text: $orcamentoTexto)
-                    .font(.system(size: 19, weight: .semibold))
+                    .font(.system(size: 17, weight: .semibold))
                     .keyboardType(.numberPad)
                     .focused($foco)
             }
@@ -184,7 +184,7 @@ struct OnboardingView: View {
                         foco = false
                     } label: {
                         Text(v.moedaInteira)
-                            .font(.system(size: 15, weight: .semibold))
+                            .font(.system(size: 14, weight: .semibold))
                             .foregroundStyle(.secondary)
                             .padding(.horizontal, 18)
                             .frame(height: 46)
@@ -206,11 +206,11 @@ struct OnboardingView: View {
                 let item = sugestao[i]
                 HStack(spacing: 16) {
                     IconeQuadrado(icone: item.1, tamanho: 52)
-                    Text(item.0).font(.system(size: 16, weight: .semibold))
+                    Text(item.0).font(.system(size: 15, weight: .semibold))
                     Spacer()
                     Text(Moeda.atual.simbolo).foregroundStyle(.secondary)
                     TextField("0", text: bindingDivisao(item.0, item.2))
-                        .font(.system(size: 18, weight: .bold))
+                        .font(.system(size: 16, weight: .bold))
                         .multilineTextAlignment(.trailing)
                         .keyboardType(.numberPad)
                         .frame(width: 90)
@@ -224,7 +224,7 @@ struct OnboardingView: View {
     private var telaNotificacoes: some View {
         VStack(alignment: .leading, spacing: 14) {
             Image(systemName: "bell.badge.fill")
-                .font(.system(size: 34))
+                .font(.system(size: 30))
                 .frame(width: 110, height: 110)
                 .background(Color.cartao, in: RoundedRectangle(cornerRadius: 30, style: .continuous))
                 .frame(maxWidth: .infinity)
@@ -246,7 +246,7 @@ struct OnboardingView: View {
     private var telaSuperpoder: some View {
         VStack(alignment: .leading, spacing: 14) {
             Image(systemName: "hand.tap.fill")
-                .font(.system(size: 44))
+                .font(.system(size: 40))
                 .frame(width: 210, height: 210)
                 .background(Color.cartao, in: Circle())
                 .frame(maxWidth: .infinity)
@@ -311,7 +311,7 @@ struct AvisoExemplo: View {
                     Spacer()
                     Text("agora").font(.system(size: 13)).foregroundStyle(.secondary)
                 }
-                Text(titulo).font(.system(size: 15, weight: .semibold))
+                Text(titulo).font(.system(size: 14, weight: .semibold))
                 Text(texto).font(.system(size: 14)).foregroundStyle(.secondary)
             }
         }

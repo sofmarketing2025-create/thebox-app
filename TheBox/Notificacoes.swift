@@ -7,6 +7,21 @@ enum Notificacoes {
         UserDefaults.standard.object(forKey: chave) as? Bool ?? true
     }
 
+    /// Dias de antecedência dos avisos de conta (ex.: [1, 3, 5]). Salvo como "1,3,5".
+    static func diasAviso() -> [Int] {
+        let d = UserDefaults.standard
+        let texto = d.string(forKey: "diasAviso") ?? ""
+        if texto.isEmpty {
+            let antigo = d.object(forKey: "diasAntes") as? Int ?? 1
+            return antigo > 0 ? [antigo] : []
+        }
+        return Array(Set(texto.split(separator: ",").compactMap { Int($0) }.filter { $0 > 0 })).sorted()
+    }
+
+    static func salvarDiasAviso(_ dias: [Int]) {
+        UserDefaults.standard.set(Array(Set(dias)).sorted().map(String.init).joined(separator: ","), forKey: "diasAviso")
+    }
+
     static func pedirPermissao() async -> Bool {
         let center = UNUserNotificationCenter.current()
         return (try? await center.requestAuthorization(options: [.alert, .sound, .badge])) ?? false
@@ -53,7 +68,7 @@ enum Notificacoes {
         center.removeAllPendingNotificationRequests()
 
         let d = UserDefaults.standard
-        let antes = d.object(forKey: "diasAntes") as? Int ?? 2
+        let dias = diasAviso()
         let hora = d.object(forKey: "horaAviso") as? Int ?? 9
         let agora = Date.now
         let cal = Calendar.current
@@ -77,7 +92,8 @@ enum Notificacoes {
                 }
                 for item in itens {
                     avisos.append((item.venc, item.fatura ? "Fatura chegando" : item.nome, "\(item.valor.moeda) vence hoje."))
-                    if antes > 0, let antecipado = cal.date(byAdding: .day, value: -antes, to: item.venc) {
+                    for antes in dias {
+                        guard let antecipado = cal.date(byAdding: .day, value: -antes, to: item.venc) else { continue }
                         let quando = antes == 1 ? "amanhã" : "em \(antes) dias"
                         let corpo = item.fatura
                             ? "Sua \(item.nome.lowercased()) vence \(quando) (\(item.valor.moeda))."

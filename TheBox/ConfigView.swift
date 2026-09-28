@@ -21,7 +21,6 @@ struct ConfigView: View {
     @AppStorage("lembreteRegistro") private var lembreteRegistro = true
     @AppStorage("resumoSemana") private var resumoSemana = true
     @AppStorage("alertasInteligentes") private var alertas = true
-    @AppStorage("diasAntes") private var diasAntes = 2
     @AppStorage("faceID") private var faceID = false
 
     @State private var folha: Folha?
@@ -47,12 +46,12 @@ struct ConfigView: View {
                 Button { folha = .nome } label: {
                     HStack(spacing: 18) {
                         Text(iniciais)
-                            .font(.system(size: 21, weight: .bold))
+                            .font(.system(size: 19, weight: .bold))
                             .foregroundStyle(Color.sobreDestaque)
                             .frame(width: 72, height: 72)
                             .background(Color.destaque, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
                         VStack(alignment: .leading, spacing: 4) {
-                            Text(nome.isEmpty ? "Seu nome" : nome).font(.system(size: 18, weight: .semibold))
+                            Text(nome.isEmpty ? "Seu nome" : nome).font(.system(size: 16, weight: .semibold))
                             Text("Toque para editar").foregroundStyle(.secondary)
                         }
                         Spacer()
@@ -81,12 +80,8 @@ struct ConfigView: View {
                 Secao("Notificações") {
                     LinhaToggle(titulo: "Contas próximas do vencimento", ligado: $avisoContas)
                     if avisoContas {
-                        Stepper(value: $diasAntes, in: 0...10) {
-                            Text(diasAntes == 0 ? "Só no dia do vencimento" :
-                                    (diasAntes == 1 ? "Avisar 1 dia antes" : "Avisar \(diasAntes) dias antes"))
-                                .foregroundStyle(.secondary)
-                        }
-                        .padding(.bottom, 8)
+                        DiasAvisoEditor { Notificacoes.reagendar(ctx) }
+                            .padding(.bottom, 12)
                     }
                     Divisor()
                     LinhaToggle(titulo: "Lembretes de registro", ligado: $lembreteRegistro)
@@ -137,7 +132,6 @@ struct ConfigView: View {
         }
         .background(Color.fundo)
         .onChange(of: avisoContas) { _, _ in Notificacoes.reagendar(ctx) }
-        .onChange(of: diasAntes) { _, _ in Notificacoes.reagendar(ctx) }
         .onChange(of: lembreteRegistro) { _, _ in Notificacoes.reagendar(ctx) }
         .onChange(of: resumoSemana) { _, _ in Notificacoes.reagendar(ctx) }
         .onChange(of: faceID) { _, ligado in
@@ -185,6 +179,62 @@ struct ConfigView: View {
 
     private var versao: String {
         Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "2.0"
+    }
+}
+
+/// Etiquetas "1 dia ✕  3 dias ✕  +" com os avisos antes do vencimento
+struct DiasAvisoEditor: View {
+    var mudou: () -> Void
+    @State private var dias: [Int] = Notificacoes.diasAviso()
+    private let opcoes = [1, 2, 3, 5, 7, 10, 15]
+
+    private func nome(_ d: Int) -> String { d == 1 ? "1 dia" : "\(d) dias" }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text(dias.isEmpty ? "Só no dia do vencimento. Toque em + pra avisar antes." : "Avisar antes do vencimento (e no dia):")
+                .font(.system(size: 13))
+                .foregroundStyle(.secondary)
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 8) {
+                    ForEach(dias, id: \.self) { d in
+                        HStack(spacing: 6) {
+                            Text(nome(d)).font(.system(size: 14, weight: .semibold))
+                            Button {
+                                atualizar(dias.filter { $0 != d })
+                            } label: {
+                                Image(systemName: "xmark.circle.fill").font(.system(size: 14)).foregroundStyle(.secondary)
+                            }
+                            .buttonStyle(.plain)
+                        }
+                        .padding(.leading, 12)
+                        .padding(.trailing, 8)
+                        .frame(height: 34)
+                        .background(Color.cartao2, in: Capsule())
+                    }
+                    let restantes = opcoes.filter { !dias.contains($0) }
+                    if !restantes.isEmpty {
+                        Menu {
+                            ForEach(restantes, id: \.self) { d in
+                                Button(nome(d) + " antes") { atualizar(dias + [d]) }
+                            }
+                        } label: {
+                            Image(systemName: "plus")
+                                .font(.system(size: 14, weight: .semibold))
+                                .foregroundStyle(Color.sobreDestaque)
+                                .frame(width: 34, height: 34)
+                                .background(Color.destaque, in: Circle())
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    private func atualizar(_ novos: [Int]) {
+        dias = Array(Set(novos)).sorted()
+        Notificacoes.salvarDiasAviso(dias)
+        mudou()
     }
 }
 
@@ -236,7 +286,7 @@ struct LinhaConfig: View {
         Button(action: acao) {
             HStack(spacing: 10) {
                 Text(titulo)
-                    .font(.system(size: 15))
+                    .font(.system(size: 14))
                     .foregroundStyle(perigo ? Color.red : Color.primary)
                     .lineLimit(1)
                 Spacer()
@@ -264,10 +314,10 @@ struct NomeSheet: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Text("Seu nome").font(.system(size: 21, weight: .bold))
+            Text("Seu nome").font(.system(size: 19, weight: .bold))
             Text("Como você quer ser chamado no app").foregroundStyle(.secondary)
             TextField("Seu nome", text: $texto)
-                .font(.system(size: 23, weight: .bold))
+                .font(.system(size: 21, weight: .bold))
                 .textContentType(.name)
                 .focused($foco)
                 .padding(.vertical, 22)
@@ -298,7 +348,7 @@ struct TemaSheet: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            Text("Aparência").font(.system(size: 21, weight: .bold)).padding(.bottom, 12)
+            Text("Aparência").font(.system(size: 19, weight: .bold)).padding(.bottom, 12)
             ForEach(opcoes.indices, id: \.self) { i in
                 let o = opcoes[i]
                 Button {
@@ -307,7 +357,7 @@ struct TemaSheet: View {
                 } label: {
                     HStack(spacing: 16) {
                         Image(systemName: o.2).frame(width: 26)
-                        Text(o.1).font(.system(size: 16))
+                        Text(o.1).font(.system(size: 15))
                         Spacer()
                         if tema == o.0 { Image(systemName: "checkmark") }
                     }
@@ -330,15 +380,15 @@ struct MoedaSheet: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 0) {
-                Text("Moeda padrão").font(.system(size: 21, weight: .bold)).padding(.bottom, 12)
+                Text("Moeda padrão").font(.system(size: 19, weight: .bold)).padding(.bottom, 12)
                 ForEach(Moeda.allCases) { m in
                     Button {
                         moeda = m.rawValue
                         dismiss()
                     } label: {
                         HStack(spacing: 16) {
-                            Text(m.simbolo).font(.system(size: 16, weight: .bold)).frame(width: 60, alignment: .leading)
-                            Text(m.nome).font(.system(size: 16))
+                            Text(m.simbolo).font(.system(size: 15, weight: .bold)).frame(width: 60, alignment: .leading)
+                            Text(m.nome).font(.system(size: 15))
                             Spacer()
                             if moeda == m.rawValue {
                                 Image(systemName: "checkmark")
@@ -371,7 +421,7 @@ struct CategoriasSheet: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 0) {
                 Text(tipo == .gasto ? "Categorias de gasto" : "Categorias de receita")
-                    .font(.system(size: 21, weight: .bold))
+                    .font(.system(size: 19, weight: .bold))
                     .padding(.bottom, 16)
                 HStack(spacing: 12) {
                     TextField("Nova categoria...", text: $nova)
@@ -380,7 +430,7 @@ struct CategoriasSheet: View {
                         .campo()
                     Button(action: adicionar) {
                         Image(systemName: "plus")
-                            .font(.system(size: 18, weight: .medium))
+                            .font(.system(size: 16, weight: .medium))
                             .foregroundStyle(Color.sobreDestaque)
                             .frame(width: 60, height: 58)
                             .background(Color.destaque, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
@@ -392,7 +442,7 @@ struct CategoriasSheet: View {
                 ForEach(lista) { c in
                     HStack(spacing: 14) {
                         Image(systemName: c.icone).frame(width: 24).foregroundStyle(.secondary)
-                        Text(c.nome).font(.system(size: 16))
+                        Text(c.nome).font(.system(size: 15))
                         Spacer()
                         if tipo == .gasto {
                             Button(c.essencial ? "essencial" : "desejo") {
@@ -407,7 +457,7 @@ struct CategoriasSheet: View {
                             ctx.delete(c)
                             try? ctx.save()
                         } label: {
-                            Image(systemName: "xmark.circle.fill").font(.system(size: 19)).foregroundStyle(.secondary)
+                            Image(systemName: "xmark.circle.fill").font(.system(size: 17)).foregroundStyle(.secondary)
                         }
                         .buttonStyle(.plain)
                     }
@@ -447,7 +497,7 @@ struct CarteirasSheet: View {
 
         ScrollView {
             VStack(alignment: .leading, spacing: 0) {
-                Text("Carteiras").font(.system(size: 23, weight: .bold)).padding(.bottom, 20)
+                Text("Carteiras").font(.system(size: 21, weight: .bold)).padding(.bottom, 20)
                 if let principal {
                     CartaoCarteira(carteira: principal, aberto: true)
                         .onLongPressGesture { removendo = principal }
@@ -495,8 +545,8 @@ struct CartaoCarteira: View {
     var body: some View {
         VStack(alignment: .leading) {
             HStack(spacing: 14) {
-                Image(systemName: carteira.tipo.icone).font(.system(size: 19, weight: .semibold))
-                Text(carteira.nome).font(.system(size: 19, weight: .bold)).lineLimit(1)
+                Image(systemName: carteira.tipo.icone).font(.system(size: 17, weight: .semibold))
+                Text(carteira.nome).font(.system(size: 17, weight: .bold)).lineLimit(1)
                 Spacer()
             }
             if aberto {
@@ -538,7 +588,7 @@ struct NovaCarteiraSheet: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
-            Text("Novo meio de pagamento").font(.system(size: 21, weight: .bold))
+            Text("Novo meio de pagamento").font(.system(size: 19, weight: .bold))
             TextField("Nome (ex.: Nubank, Inter)", text: $nome).campo()
             Picker("Tipo", selection: $tipo) {
                 ForEach(TipoCarteira.allCases) { t in Text(t.nome).tag(t) }
@@ -604,7 +654,7 @@ struct GuiaView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 18) {
                 HStack {
-                    Text(titulo).font(.system(size: 23, weight: .bold))
+                    Text(titulo).font(.system(size: 21, weight: .bold))
                     Spacer()
                     BotaoFechar { dismiss() }
                 }
@@ -615,7 +665,7 @@ struct GuiaView: View {
                             .foregroundStyle(Color.sobreDestaque)
                             .frame(width: 28, height: 28)
                             .background(Color.destaque, in: Circle())
-                        Text(passos[i]).font(.system(size: 15))
+                        Text(passos[i]).font(.system(size: 14))
                     }
                 }
             }

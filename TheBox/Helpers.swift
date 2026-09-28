@@ -147,7 +147,7 @@ struct EstiloPrincipal: ButtonStyle {
     var ativo = true
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
-            .font(.system(size: 16, weight: .semibold))
+            .font(.system(size: 15, weight: .semibold))
             .foregroundStyle(Color.sobreDestaque)
             .frame(maxWidth: .infinity)
             .frame(height: 54)
@@ -160,7 +160,7 @@ struct EstiloContorno: ButtonStyle {
     var ativo = true
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
-            .font(.system(size: 16, weight: .semibold))
+            .font(.system(size: 15, weight: .semibold))
             .foregroundStyle(Color.primary.opacity(ativo ? 1 : 0.4))
             .frame(maxWidth: .infinity)
             .frame(height: 54)
@@ -179,7 +179,7 @@ extension View {
             .presentationDragIndicator(.visible)
     }
     func tituloGrande() -> some View {
-        self.font(.system(size: 32, weight: .heavy)).tracking(-1.2)
+        self.font(.system(size: 29, weight: .heavy)).tracking(-1.2)
     }
 }
 
@@ -192,10 +192,10 @@ struct Cabecalho<Acoes: View>: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 2) {
-            Text(sub).font(.system(size: 15)).foregroundStyle(.secondary)
+            Text(sub).font(.system(size: 14)).foregroundStyle(.secondary)
             HStack(spacing: 10) {
                 Text(titulo)
-                    .font(.system(size: 30, weight: .heavy)).tracking(-0.8)
+                    .font(.system(size: 27, weight: .heavy)).tracking(-0.8)
                     .lineLimit(1).minimumScaleFactor(0.6)
                 Spacer(minLength: 4)
                 acoes()
@@ -217,7 +217,7 @@ struct BotaoCirculo: View {
     var body: some View {
         Button(action: acao) {
             Image(systemName: icone)
-                .font(.system(size: 18, weight: .medium))
+                .font(.system(size: 16, weight: .medium))
                 .foregroundStyle(.primary)
                 .frame(width: 46, height: 46)
                 .background(Color.cartao, in: Circle())
@@ -233,7 +233,7 @@ struct BotaoFechar: View {
     var body: some View {
         Button(action: acao) {
             Image(systemName: icone)
-                .font(.system(size: 15, weight: .semibold))
+                .font(.system(size: 14, weight: .semibold))
                 .foregroundStyle(.primary)
                 .frame(width: 44, height: 44)
                 .background(Color.cartao2.opacity(0.6), in: Circle())
@@ -276,10 +276,10 @@ struct SeletorMesSheet: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 0) {
                 HStack {
-                    Text("Selecionar mês").font(.system(size: 21, weight: .bold))
+                    Text("Selecionar mês").font(.system(size: 19, weight: .bold))
                     Spacer()
                     Button { ano -= 1 } label: { Image(systemName: "chevron.left").padding(8) }
-                    Text(String(ano)).font(.system(size: 16, weight: .bold)).frame(width: 60)
+                    Text(String(ano)).font(.system(size: 15, weight: .bold)).frame(width: 60)
                     Button { ano += 1 } label: { Image(systemName: "chevron.right").padding(8) }
                 }
                 .buttonStyle(.plain)
@@ -293,7 +293,7 @@ struct SeletorMesSheet: View {
                     } label: {
                         HStack {
                             Text(Mes.nomes[m])
-                                .font(.system(size: 16, weight: i == mes ? .bold : .regular))
+                                .font(.system(size: 15, weight: i == mes ? .bold : .regular))
                                 .foregroundStyle(i == mes ? Color.primary : Color.secondary)
                             Spacer()
                             if i == mes { Image(systemName: "checkmark") }
@@ -317,9 +317,11 @@ struct Chip: View {
     init(_ texto: String) { self.texto = texto }
     var body: some View {
         Text(texto)
-            .font(.system(size: 12, weight: .semibold))
+            .font(.system(size: 11, weight: .semibold))
             .foregroundStyle(.secondary)
-            .padding(.horizontal, 9)
+            .lineLimit(1)
+            .fixedSize()
+            .padding(.horizontal, 8)
             .padding(.vertical, 3)
             .background(Color.cartao2, in: Capsule())
     }
@@ -338,7 +340,7 @@ struct ChipOpcao: View {
             HStack(spacing: 10) {
                 if let icone { Image(systemName: icone).font(.system(size: 14)) }
                 Text(texto)
-                    .font(.system(size: 15, weight: selecionado ? .semibold : .regular))
+                    .font(.system(size: 14, weight: selecionado ? .semibold : .regular))
                     .lineLimit(1).minimumScaleFactor(0.8)
             }
             .foregroundStyle(selecionado ? Color.sobreDestaque : Color.secondary)
@@ -383,8 +385,8 @@ struct Vazio: View {
     let texto: String
     var body: some View {
         VStack(spacing: 10) {
-            Image(systemName: icone).font(.system(size: 30)).foregroundStyle(.secondary)
-            Text(titulo).font(.system(size: 16, weight: .semibold))
+            Image(systemName: icone).font(.system(size: 27)).foregroundStyle(.secondary)
+            Text(titulo).font(.system(size: 15, weight: .semibold))
             Text(texto).font(.subheadline).foregroundStyle(.secondary).multilineTextAlignment(.center)
         }
         .frame(maxWidth: .infinity)
@@ -462,7 +464,7 @@ struct LinhaToggle: View {
     var body: some View {
         Toggle(isOn: $ligado) {
             VStack(alignment: .leading, spacing: 3) {
-                Text(titulo).font(.system(size: 15))
+                Text(titulo).font(.system(size: 14))
                 if let sub { Text(sub).font(.footnote).foregroundStyle(.secondary) }
             }
         }
@@ -489,12 +491,12 @@ struct EditarValorSheet: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Text(titulo).font(.system(size: 21, weight: .bold))
+            Text(titulo).font(.system(size: 19, weight: .bold))
             Text(subtitulo).foregroundStyle(.secondary)
             HStack(spacing: 12) {
-                Text(Moeda.atual.simbolo).font(.system(size: 28, weight: .bold)).foregroundStyle(.secondary)
+                Text(Moeda.atual.simbolo).font(.system(size: 25, weight: .bold)).foregroundStyle(.secondary)
                 TextField("0", text: $texto)
-                    .font(.system(size: 34, weight: .bold))
+                    .font(.system(size: 30, weight: .bold))
                     .keyboardType(.decimalPad)
                     .focused($foco)
             }

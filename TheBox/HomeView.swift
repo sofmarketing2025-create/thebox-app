@@ -38,10 +38,10 @@ struct HomeView: View {
                             ocultar: $ocultar) { detalhes = true }
 
                 HStack(alignment: .firstTextBaseline) {
-                    Text("Últimas transações").font(.system(size: 21, weight: .bold))
+                    Text("Últimas transações").font(.system(size: 19, weight: .bold))
                     Spacer()
                     Button("Ver todas") { todas = true }
-                        .font(.system(size: 15))
+                        .font(.system(size: 14))
                         .foregroundStyle(.secondary)
                 }
                 .padding(.top, 10)
@@ -94,7 +94,7 @@ struct CartaoSaldo: View {
         VStack(spacing: -20) {
             VStack(alignment: .leading, spacing: 10) {
                 HStack {
-                    Text("Saldo").font(.system(size: 16)).foregroundStyle(.secondary)
+                    Text("Saldo").font(.system(size: 15)).foregroundStyle(.secondary)
                     Spacer()
                     Button { withAnimation { ocultar.toggle() } } label: {
                         Image(systemName: ocultar ? "eye.slash" : "eye").foregroundStyle(.secondary)
@@ -102,7 +102,7 @@ struct CartaoSaldo: View {
                     .buttonStyle(.plain)
                 }
                 Text(ocultar ? "\(Moeda.atual.simbolo) ••••••" : saldo.moeda)
-                    .font(.system(size: 36, weight: .heavy)).tracking(-1.2)
+                    .font(.system(size: 32, weight: .heavy)).tracking(-1.2)
                     .lineLimit(1).minimumScaleFactor(0.5)
                 BarraProgresso(p: progresso, cor: corPorcentagem(progresso), altura: 5)
                     .padding(.top, 10)
@@ -131,7 +131,7 @@ struct LinhaTransacao: View {
     var body: some View {
         HStack(spacing: 12) {
             VStack(alignment: .leading, spacing: 5) {
-                Text(transacao.titulo).font(.system(size: 16, weight: .semibold)).lineLimit(1)
+                Text(transacao.titulo).font(.system(size: 15, weight: .semibold)).lineLimit(1)
                 HStack(spacing: 6) {
                     Image(systemName: iconeCarteira).font(.caption)
                     Text(transacao.categoria).lineLimit(1)
@@ -142,7 +142,7 @@ struct LinhaTransacao: View {
             Spacer(minLength: 8)
             VStack(alignment: .trailing, spacing: 5) {
                 Text((transacao.tipo == .gasto ? "-" : "+") + transacao.valor.moeda)
-                    .font(.system(size: 16, weight: .semibold))
+                    .font(.system(size: 15, weight: .semibold))
                     .foregroundStyle(transacao.tipo == .gasto ? Color.primary : Color.green)
                 Text(transacao.data.formatted(.dateTime.day().month(.abbreviated).locale(ptBR)))
                     .font(.system(size: 14))
@@ -171,7 +171,7 @@ struct DetalhesSaldoView: View {
 
         ScrollView {
             VStack(alignment: .leading, spacing: 18) {
-                Text("Saldo de \(Mes.nome(mes).lowercased())").font(.system(size: 23, weight: .bold))
+                Text("Saldo de \(Mes.nome(mes).lowercased())").font(.system(size: 21, weight: .bold))
                 VStack(spacing: 0) {
                     LinhaStat(titulo: "Receitas", valor: fin.receitas(em: mes).moeda)
                     Divider().overlay(Color.borda)
@@ -188,7 +188,7 @@ struct DetalhesSaldoView: View {
                 .background(Color.cartao2.opacity(0.45), in: RoundedRectangle(cornerRadius: 22, style: .continuous))
 
                 if !porCarteira.isEmpty {
-                    Text("Gastos por meio de pagamento").font(.system(size: 16, weight: .semibold)).padding(.top, 6)
+                    Text("Gastos por meio de pagamento").font(.system(size: 15, weight: .semibold)).padding(.top, 6)
                     VStack(spacing: 0) {
                         ForEach(porCarteira) { item in
                             LinhaStat(titulo: item.nome.isEmpty ? "Sem carteira" : item.nome, valor: item.valor.moeda)
@@ -254,7 +254,7 @@ struct TodasTransacoesView: View {
                         ForEach(grupo.itens) { t in
                             HStack {
                                 VStack(alignment: .leading, spacing: 3) {
-                                    Text(t.titulo).font(.system(size: 15, weight: .semibold))
+                                    Text(t.titulo).font(.system(size: 14, weight: .semibold))
                                     Text("\(t.categoria) · \(t.carteira)").font(.footnote).foregroundStyle(.secondary)
                                 }
                                 Spacer()

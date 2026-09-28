@@ -217,7 +217,7 @@ struct LoginView: View {
 
     private func titulos(_ titulo: String, _ sub: String) -> some View {
         VStack(spacing: 8) {
-            Text(titulo).font(.system(size: 32, weight: .heavy)).tracking(-1)
+            Text(titulo).font(.system(size: 29, weight: .heavy)).tracking(-1)
             Text(sub).foregroundStyle(.secondary).multilineTextAlignment(.center)
         }
         .padding(.bottom, 16)
@@ -311,7 +311,7 @@ struct CampoCodigo: View {
 
     var body: some View {
         TextField("000000", text: $codigo)
-            .font(.system(size: 30, weight: .bold, design: .monospaced))
+            .font(.system(size: 27, weight: .bold, design: .monospaced))
             .tracking(8)
             .multilineTextAlignment(.center)
             .keyboardType(.numberPad)

@@ -48,7 +48,7 @@ struct InsightsView: View {
         VStack(alignment: .leading, spacing: 0) {
             HStack {
                 Button { dismiss() } label: {
-                    Image(systemName: "xmark").font(.system(size: 18, weight: .medium)).padding(8)
+                    Image(systemName: "xmark").font(.system(size: 16, weight: .medium)).padding(8)
                 }
                 .buttonStyle(.plain)
                 Spacer()
@@ -87,11 +87,11 @@ struct InsightsView: View {
         let total = max(r.media, 0.01)
         let pe = r.essencial / total
         Text("antes de tudo").foregroundStyle(.secondary)
-        Text("isso é o que você realmente gasta").font(.system(size: 30, weight: .heavy)).tracking(-1)
+        Text("isso é o que você realmente gasta").font(.system(size: 27, weight: .heavy)).tracking(-1)
 
         VStack(alignment: .leading, spacing: 14) {
             Text("VOCÊ GASTA EM MÉDIA").font(.system(size: 14, weight: .semibold)).tracking(1.5).foregroundStyle(.secondary)
-            Text(r.media.moedaInteira).font(.system(size: 34, weight: .heavy))
+            Text(r.media.moedaInteira).font(.system(size: 30, weight: .heavy))
             GeometryReader { g in
                 HStack(spacing: 3) {
                     Capsule().fill(Color.primary).frame(width: max(0, g.size.width * pe - 1.5))
@@ -153,7 +153,7 @@ struct InsightsView: View {
     @ViewBuilder
     private func paginaAjuste(_ r: Resumo) -> some View {
         Text("depois").foregroundStyle(.secondary)
-        Text("onde dá pra ajustar").font(.system(size: 30, weight: .heavy)).tracking(-1)
+        Text("onde dá pra ajustar").font(.system(size: 27, weight: .heavy)).tracking(-1)
         if r.porCategoria.isEmpty {
             Text("assim que você registrar alguns gastos, mostramos aqui as categorias que mais pesam.")
                 .foregroundStyle(.secondary)
@@ -162,7 +162,7 @@ struct InsightsView: View {
                 ForEach(r.porCategoria.prefix(3)) { item in
                     VStack(alignment: .leading, spacing: 6) {
                         HStack {
-                            Text(item.nome).font(.system(size: 16, weight: .semibold))
+                            Text(item.nome).font(.system(size: 15, weight: .semibold))
                             Spacer()
                             Text(item.valor.moedaInteira).fontWeight(.semibold)
                         }
@@ -186,10 +186,10 @@ struct InsightsView: View {
         let base = renda > 0 ? min(renda * 0.8, max(r.media * 0.9, 1)) : r.media * 0.9
         let sugestao = (base / 50).rounded() * 50
         Text("por fim").foregroundStyle(.secondary)
-        Text("um limite que cabe no seu mês").font(.system(size: 30, weight: .heavy)).tracking(-1)
+        Text("um limite que cabe no seu mês").font(.system(size: 27, weight: .heavy)).tracking(-1)
         VStack(alignment: .leading, spacing: 10) {
             Text("LIMITE SUGERIDO").font(.system(size: 14, weight: .semibold)).tracking(1.5).foregroundStyle(.secondary)
-            Text(sugestao > 0 ? sugestao.moedaInteira : "—").font(.system(size: 34, weight: .heavy))
+            Text(sugestao > 0 ? sugestao.moedaInteira : "—").font(.system(size: 30, weight: .heavy))
             Text(renda > 0 ? "até 80% da sua renda, um pouco abaixo da sua média" : "10% abaixo da sua média dos últimos meses")
                 .foregroundStyle(.secondary)
         }
