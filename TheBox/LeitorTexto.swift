@@ -14,9 +14,9 @@ enum LeitorTexto {
 
     private static let saida = ["pix enviado", "enviou", "voce enviou", "transferencia enviada", "transferiu", "pagamento",
                                 "pagou", "compra", "debitado", "debito de", "saque", "boleto pago", "pix realizado",
-                                "transferencia realizada", "pix feito"]
+                                "transferencia realizada", "pix feito", "foi enviado", "enviado"]
     private static let entrada = ["pix recebido", "recebeu", "voce recebeu", "recebimento", "transferencia recebida",
-                                  "deposito", "creditado", "credito em conta", "salario", "rendimento"]
+                                  "deposito", "creditado", "credito em conta", "salario", "rendimento", "foi recebido", "recebido"]
 
     static func ler(_ bruto: String) -> Resultado? {
         let texto = bruto.replacingOccurrences(of: "\u{00a0}", with: " ")

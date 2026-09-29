@@ -61,6 +61,68 @@ struct ConfigView: View {
                 }
                 .buttonStyle(.plain)
 
+                secoesPreferencias
+                secoesSistema
+
+                LinhaConfig(titulo: "Excluir conta", icone: "trash", perigo: true) { confirmarExcluir = true }
+                    .padding(.horizontal, 22)
+                    .background(Color.cartao, in: RoundedRectangle(cornerRadius: 28, style: .continuous))
+                    .overlay(RoundedRectangle(cornerRadius: 28, style: .continuous).stroke(Color.borda))
+                    .padding(.top, 16)
+            }
+            .padding(.horizontal, 20)
+            .padding(.bottom, 20)
+        }
+        .background(Color.fundo)
+        .onChange(of: avisoContas) { _, _ in Notificacoes.reagendar(ctx) }
+        .onChange(of: lembreteRegistro) { _, _ in Notificacoes.reagendar(ctx) }
+        .onChange(of: resumoSemana) { _, _ in Notificacoes.reagendar(ctx) }
+        .onChange(of: faceID) { _, ligado in
+            if ligado {
+                Task { if !(await Biometria.autenticar()) { faceID = false } }
+            }
+        }
+        .sheet(item: $folha) { f in
+            switch f {
+            case .nome: NomeSheet(nome: $nome)
+            case .tema: TemaSheet(tema: $tema)
+            case .catGasto: CategoriasSheet(tipo: .gasto)
+            case .catReceita: CategoriasSheet(tipo: .receita)
+            case .carteiras: CarteirasSheet()
+            case .moeda: MoedaSheet(moeda: $moeda)
+            case .toqueDuplo: GuiaView(guia: .toqueDuplo)
+            case .maquininha: GuiaView(guia: .maquininha)
+            case .pix: GuiaView(guia: .pix)
+            }
+        }
+        .sheet(item: $exportar) { a in Compartilhar(itens: [a.url]) }
+        .fileImporter(isPresented: $importar, allowedContentTypes: [.commaSeparatedText, .plainText, .text]) { resultado in
+            if case let .success(url) = resultado {
+                let n = CSV.importar(url, ctx: ctx)
+                mensagem = n > 0 ? "\(n) transações importadas." : "Nenhuma transação encontrada no arquivo."
+            }
+        }
+        .alert(mensagem ?? "", isPresented: Binding(get: { mensagem != nil }, set: { if !$0 { mensagem = nil } })) {
+            Button("OK") { mensagem = nil }
+        }
+        .confirmationDialog("Sair da sua conta?", isPresented: $confirmarSair, titleVisibility: .visible) {
+            Button("Sair", role: .destructive) { Task { await sessao.sair() } }
+        } message: {
+            Text("Seus dados continuam salvos neste iPhone e voltam quando você entrar de novo.")
+        }
+        .confirmationDialog("Excluir sua conta?", isPresented: $confirmarExcluir, titleVisibility: .visible) {
+            Button("Excluir conta e dados", role: .destructive) {
+                Task {
+                    do { try await sessao.excluirConta() } catch { mensagem = Sessao.mensagem(error) }
+                }
+            }
+        } message: {
+            Text("Isso apaga sua conta e todos os dados deste iPhone. Não dá pra desfazer.")
+        }
+    }
+
+    @ViewBuilder
+    private var secoesPreferencias: some View {
                 Secao("Aparência") {
                     LinhaConfig(titulo: "Tema", valor: nomeTema) { folha = .tema }
                 }
@@ -91,6 +153,10 @@ struct ConfigView: View {
                     LinhaToggle(titulo: "Alertas inteligentes", ligado: $alertas)
                 }
 
+    }
+
+    @ViewBuilder
+    private var secoesSistema: some View {
                 Secao("Segurança") {
                     LinhaToggle(titulo: "Bloqueio com Face ID", ligado: $faceID)
                 }
@@ -123,73 +189,6 @@ struct ConfigView: View {
                     LinhaConfig(titulo: "Sair", icone: "rectangle.portrait.and.arrow.right", perigo: true) { confirmarSair = true }
                 }
 
-                LinhaConfig(titulo: "Excluir conta", icone: "trash", perigo: true) { confirmarExcluir = true }
-                    .padding(.horizontal, 22)
-                    .background(Color.cartao, in: RoundedRectangle(cornerRadius: 28, style: .continuous))
-                    .overlay(RoundedRectangle(cornerRadius: 28, style: .continuous).stroke(Color.borda))
-                    .padding(.top, 16)
-            }
-            .padding(.horizontal, 20)
-            .padding(.bottom, 20)
-        }
-        .background(Color.fundo)
-        .onChange(of: avisoContas) { _, _ in Notificacoes.reagendar(ctx) }
-        .onChange(of: lembreteRegistro) { _, _ in Notificacoes.reagendar(ctx) }
-        .onChange(of: resumoSemana) { _, _ in Notificacoes.reagendar(ctx) }
-        .onChange(of: faceID) { _, ligado in
-            if ligado {
-                Task { if !(await Biometria.autenticar()) { faceID = false } }
-            }
-        }
-        .sheet(item: $folha) { f in
-            switch f {
-            case .nome: NomeSheet(nome: $nome)
-            case .tema: TemaSheet(tema: $tema)
-            case .catGasto: CategoriasSheet(tipo: .gasto)
-            case .catReceita: CategoriasSheet(tipo: .receita)
-            case .carteiras: CarteirasSheet()
-            case .moeda: MoedaSheet(moeda: $moeda)
-            case .toqueDuplo: GuiaView(guia: .toqueDuplo)
-            case .pix:
-            return [
-                "No app do seu banco, ative o aviso por e-mail (ou SMS) de Pix enviado e recebido.",
-                "Abra o app Atalhos → Automação → + e escolha \"E-mail\" (ou \"Mensagem\", se o banco avisa por SMS).",
-                "Em Remetente, escolha o e-mail (ou número) do banco. Se quiser, em Assunto/Mensagem contém, escreva \"Pix\".",
-                "Marque \"Executar Imediatamente\" e toque em Seguinte → Nova Automação em Branco.",
-                "Adicione a ação \"Registrar por texto\" do LBO Finanças.",
-                "Em Texto, escolha Entrada do Atalho, toque nela e selecione \"Conteúdo\" (o corpo do e-mail ou da mensagem).",
-                "Salve. Cada Pix enviado vira gasto e cada Pix recebido vira receita, com o nome da pessoa e o valor.",
-                "Se o mesmo valor já foi registrado nos últimos 30 minutos (ex.: e-mail e SMS do mesmo Pix), o app ignora pra não duplicar.",
-                "Não reconheceu direito? Mande um exemplo do texto do seu banco que dá pra ajustar."
-            ]
-        case .maquininha: GuiaView(guia: .maquininha)
-            case .pix: GuiaView(guia: .pix)
-            }
-        }
-        .sheet(item: $exportar) { a in Compartilhar(itens: [a.url]) }
-        .fileImporter(isPresented: $importar, allowedContentTypes: [.commaSeparatedText, .plainText, .text]) { resultado in
-            if case let .success(url) = resultado {
-                let n = CSV.importar(url, ctx: ctx)
-                mensagem = n > 0 ? "\(n) transações importadas." : "Nenhuma transação encontrada no arquivo."
-            }
-        }
-        .alert(mensagem ?? "", isPresented: Binding(get: { mensagem != nil }, set: { if !$0 { mensagem = nil } })) {
-            Button("OK") { mensagem = nil }
-        }
-        .confirmationDialog("Sair da sua conta?", isPresented: $confirmarSair, titleVisibility: .visible) {
-            Button("Sair", role: .destructive) { Task { await sessao.sair() } }
-        } message: {
-            Text("Seus dados continuam salvos neste iPhone e voltam quando você entrar de novo.")
-        }
-        .confirmationDialog("Excluir sua conta?", isPresented: $confirmarExcluir, titleVisibility: .visible) {
-            Button("Excluir conta e dados", role: .destructive) {
-                Task {
-                    do { try await sessao.excluirConta() } catch { mensagem = Sessao.mensagem(error) }
-                }
-            }
-        } message: {
-            Text("Isso apaga sua conta e todos os dados deste iPhone. Não dá pra desfazer.")
-        }
     }
 
     private var versao: String {
@@ -738,6 +737,18 @@ struct GuiaView: View {
                 "Agora abra Ajustes → Acessibilidade → Toque → Tocar Atrás.",
                 "Escolha \"Toque Duplo\" e selecione o atalho \"Registrar gasto\".",
                 "Pronto: dois toques nas costas do iPhone abrem a tela de registrar na hora."
+            ]
+        case .pix:
+            return [
+                "No app do seu banco, ative o aviso por e-mail (ou SMS) de Pix enviado e recebido.",
+                "Abra o app Atalhos → Automação → + e escolha \"E-mail\" (ou \"Mensagem\", se o banco avisa por SMS).",
+                "Em Remetente, escolha o e-mail (ou número) do banco. Se quiser, em Assunto/Mensagem contém, escreva \"Pix\".",
+                "Marque \"Executar Imediatamente\" e toque em Seguinte → Nova Automação em Branco.",
+                "Adicione a ação \"Registrar por texto\" do LBO Finanças.",
+                "Em Texto, escolha Entrada do Atalho, toque nela e selecione \"Conteúdo\" (o corpo do e-mail ou da mensagem).",
+                "Salve. Cada Pix enviado vira gasto e cada Pix recebido vira receita, com o nome da pessoa e o valor.",
+                "Se o mesmo valor já foi registrado nos últimos 30 minutos (ex.: e-mail e SMS do mesmo Pix), o app ignora pra não duplicar.",
+                "Não reconheceu direito? Mande um exemplo do texto do seu banco que dá pra ajustar."
             ]
         case .maquininha:
             return [
