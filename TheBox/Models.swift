@@ -77,6 +77,19 @@ final class Carteira {
     var ordem: Int = 0
     /// Meses com fatura paga, no formato "2026-10"
     var faturasPagas: [String] = []
+    /// Dia em que a fatura fecha (0 = não usar: compras no crédito saem do saldo na hora)
+    var diaFechamento: Int = 0
+
+    /// Com o dia de fechamento, as compras no crédito vão pra fatura e saem do saldo só no vencimento
+    var usaFatura: Bool { tipo == .credito && diaFechamento > 0 }
+
+    /// Mês (ver Mes.indice) em que vence a fatura de uma compra feita nessa data.
+    /// Ex.: fecha dia 26 e vence dia 2 → compra em 10/out vence em 02/nov; compra em 27/out vence em 02/dez.
+    func mesVencimento(da data: Date) -> Int {
+        let dia = Calendar.current.component(.day, from: data)
+        let fecha = Mes.indice(data) + (dia >= diaFechamento ? 1 : 0)
+        return fecha + (diaVencimento <= diaFechamento ? 1 : 0)
+    }
 
     init(nome: String, tipo: TipoCarteira, diaVencimento: Int = 10, ordem: Int = 0) {
         self.nome = nome
@@ -255,8 +268,26 @@ struct Financas {
         transacoes(em: m).filter { $0.tipo == .receita }.reduce(0) { $0 + $1.valor }
     }
 
-    func gastosAvulsos(em m: Int) -> Double {
+    /// Cartão com fatura automática (tem dia de fechamento) usado nessa transação
+    func cartaoComFatura(_ t: Transacao) -> Carteira? {
+        guard t.tipo == .gasto else { return nil }
+        return carteiras.first { $0.nome == t.carteira && $0.usaFatura }
+    }
+
+    /// Todos os gastos registrados no mês da compra (pra ver quanto você gasta)
+    func gastosTransacoes(em m: Int) -> Double {
         transacoes(em: m).filter { $0.tipo == .gasto }.reduce(0) { $0 + $1.valor }
+    }
+
+    /// Gastos que saem do saldo na hora (os do cartão com fatura só saem no vencimento)
+    func gastosAvulsos(em m: Int) -> Double {
+        transacoes(em: m).filter { $0.tipo == .gasto && cartaoComFatura($0) == nil }.reduce(0) { $0 + $1.valor }
+    }
+
+    /// Compras no crédito que caem na fatura desse cartão com vencimento no mês m
+    func comprasNaFatura(_ c: Carteira, em m: Int) -> [Transacao] {
+        guard c.usaFatura else { return [] }
+        return transacoes.filter { $0.tipo == .gasto && $0.carteira == c.nome && c.mesVencimento(da: $0.data) == m }
     }
 
     func contasDoMes(_ m: Int) -> [Conta] {
@@ -272,9 +303,13 @@ struct Financas {
         contasPagas(em: m).filter { !credito($0.pagamento(em: m) ?? "") }.reduce(0) { $0 + $1.valor }
     }
 
-    /// Fatura do cartão que vence no mês m: contas pagas com ele no mês anterior
+    /// Fatura do cartão que vence no mês m: compras no crédito do período (se o cartão tem dia de
+    /// fechamento) + contas marcadas como pagas com ele no mês anterior
     func fatura(_ c: Carteira, em m: Int) -> Double {
-        contas.filter { $0.ocorre(em: m - 1) && $0.pagamento(em: m - 1) == c.nome }.reduce(0) { $0 + $1.valor }
+        let contasNoCartao = contas.filter { $0.ocorre(em: m - 1) && $0.pagamento(em: m - 1) == c.nome }
+            .reduce(0) { $0 + $1.valor }
+        let compras = comprasNaFatura(c, em: m).reduce(0) { $0 + $1.valor }
+        return contasNoCartao + compras
     }
 
     func cartoes() -> [Carteira] { carteiras.filter { $0.tipo == .credito } }

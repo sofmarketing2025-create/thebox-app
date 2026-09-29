@@ -230,9 +230,9 @@ struct PlanoQuitacaoView: View {
     }
 
     private func mediaGastosAvulsos(_ fin: Financas, hoje: Int) -> Double {
-        let anteriores = ((hoje - 3)...(hoje - 1)).map { fin.gastosAvulsos(em: $0) }.filter { $0 > 0 }
+        let anteriores = ((hoje - 3)...(hoje - 1)).map { fin.gastosTransacoes(em: $0) }.filter { $0 > 0 }
         if !anteriores.isEmpty { return anteriores.reduce(0, +) / Double(anteriores.count) }
-        return fin.gastosAvulsos(em: hoje)
+        return fin.gastosTransacoes(em: hoje)
     }
 
     // MARK: Partes

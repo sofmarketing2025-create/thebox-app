@@ -189,6 +189,13 @@ struct RegistroSheet: View {
                     }
                 }
             }
+            if tipo == .gasto, let c = carteiras.first(where: { $0.nome == carteira }), c.usaFatura {
+                let m = c.mesVencimento(da: data)
+                Label("Entra na fatura de \(Mes.nome(m).lowercased()) (vence dia \(c.diaVencimento)) e só sai do saldo nesse mês.",
+                      systemImage: "creditcard")
+                    .font(.system(size: 12))
+                    .foregroundStyle(.secondary)
+            }
         }
     }
 

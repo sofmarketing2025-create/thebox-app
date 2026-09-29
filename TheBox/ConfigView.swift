@@ -4,7 +4,7 @@ import UniformTypeIdentifiers
 
 struct ConfigView: View {
     enum Folha: String, Identifiable {
-        case nome, tema, catGasto, catReceita, carteiras, moeda, toqueDuplo, maquininha
+        case nome, tema, catGasto, catReceita, carteiras, moeda, toqueDuplo, maquininha, pix
         var id: String { rawValue }
     }
 
@@ -99,6 +99,8 @@ struct ConfigView: View {
                     LinhaConfig(titulo: "Toque duplo nas costas", icone: "hand.tap") { folha = .toqueDuplo }
                     Divisor()
                     LinhaConfig(titulo: "Registrar pela maquininha", icone: "wave.3.right") { folha = .maquininha }
+                    Divisor()
+                    LinhaConfig(titulo: "Pix pelo e-mail ou SMS do banco", icone: "envelope") { folha = .pix }
                 }
 
                 Secao("Dados") {
@@ -148,7 +150,20 @@ struct ConfigView: View {
             case .carteiras: CarteirasSheet()
             case .moeda: MoedaSheet(moeda: $moeda)
             case .toqueDuplo: GuiaView(guia: .toqueDuplo)
-            case .maquininha: GuiaView(guia: .maquininha)
+            case .pix:
+            return [
+                "No app do seu banco, ative o aviso por e-mail (ou SMS) de Pix enviado e recebido.",
+                "Abra o app Atalhos → Automação → + e escolha \"E-mail\" (ou \"Mensagem\", se o banco avisa por SMS).",
+                "Em Remetente, escolha o e-mail (ou número) do banco. Se quiser, em Assunto/Mensagem contém, escreva \"Pix\".",
+                "Marque \"Executar Imediatamente\" e toque em Seguinte → Nova Automação em Branco.",
+                "Adicione a ação \"Registrar por texto\" do LBO Finanças.",
+                "Em Texto, escolha Entrada do Atalho, toque nela e selecione \"Conteúdo\" (o corpo do e-mail ou da mensagem).",
+                "Salve. Cada Pix enviado vira gasto e cada Pix recebido vira receita, com o nome da pessoa e o valor.",
+                "Se o mesmo valor já foi registrado nos últimos 30 minutos (ex.: e-mail e SMS do mesmo Pix), o app ignora pra não duplicar.",
+                "Não reconheceu direito? Mande um exemplo do texto do seu banco que dá pra ajustar."
+            ]
+        case .maquininha: GuiaView(guia: .maquininha)
+            case .pix: GuiaView(guia: .pix)
             }
         }
         .sheet(item: $exportar) { a in Compartilhar(itens: [a.url]) }
@@ -509,6 +524,7 @@ struct CarteirasSheet: View {
     @State private var frente: UUID?
     @State private var removendo: Carteira?
     @State private var adicionando = false
+    @State private var editandoCarteira: Carteira?
 
     var body: some View {
         let principal = carteiras.first { $0.chave == frente } ?? carteiras.first
@@ -519,6 +535,7 @@ struct CarteirasSheet: View {
                 Text("Carteiras").font(.system(size: 21, weight: .bold)).padding(.bottom, 20)
                 if let principal {
                     CartaoCarteira(carteira: principal, aberto: true)
+                        .onTapGesture { editandoCarteira = principal }
                         .onLongPressGesture { removendo = principal }
                 }
                 VStack(spacing: -22) {
@@ -529,7 +546,7 @@ struct CarteirasSheet: View {
                     }
                 }
                 .padding(.top, 14)
-                Text("toque num cartão pra trazer pra frente · toque e segure pra remover")
+                Text("toque num cartão pra trazer pra frente · toque no da frente pra editar (fechamento e vencimento) · segure pra remover")
                     .font(.footnote)
                     .foregroundStyle(.secondary)
                     .multilineTextAlignment(.center)
@@ -543,6 +560,7 @@ struct CarteirasSheet: View {
         }
         .folha([.large])
         .sheet(isPresented: $adicionando) { NovaCarteiraSheet(ordem: (carteiras.map(\.ordem).max() ?? 0) + 1) }
+        .sheet(item: $editandoCarteira) { c in NovaCarteiraSheet(ordem: c.ordem, carteira: c) }
         .confirmationDialog("Remover \(removendo?.nome ?? "")?",
                             isPresented: Binding(get: { removendo != nil }, set: { if !$0 { removendo = nil } }),
                             titleVisibility: .visible) {
@@ -573,7 +591,11 @@ struct CartaoCarteira: View {
                 HStack {
                     Text(carteira.tipo.nome.uppercased()).tracking(2)
                     Spacer()
-                    if carteira.tipo == .credito { Text("vence dia \(carteira.diaVencimento)") }
+                    if carteira.tipo == .credito {
+                        Text(carteira.diaFechamento > 0
+                             ? "fecha dia \(carteira.diaFechamento) · vence dia \(carteira.diaVencimento)"
+                             : "vence dia \(carteira.diaVencimento) · toque pra pôr o fechamento")
+                    }
                 }
                 .font(.system(size: 13, weight: .semibold))
                 .foregroundStyle(.white.opacity(0.7))
@@ -599,48 +621,113 @@ struct CartaoCarteira: View {
 
 struct NovaCarteiraSheet: View {
     let ordem: Int
+    /// Preenchido quando é pra editar um cartão/carteira existente
+    var carteira: Carteira? = nil
     @Environment(\.dismiss) private var dismiss
     @Environment(\.modelContext) private var ctx
+    @Query private var transacoes: [Transacao]
+    @Query private var contas: [Conta]
     @State private var nome = ""
     @State private var tipo: TipoCarteira = .credito
-    @State private var diaTexto = ""
+    @State private var vencimentoTexto = ""
+    @State private var fechamentoTexto = ""
+
+    private var nomeLimpo: String { nome.trimmingCharacters(in: .whitespaces) }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            Text("Novo meio de pagamento").font(.system(size: 19, weight: .bold))
-            TextField("Nome (ex.: Nubank, Inter)", text: $nome).campo()
-            Picker("Tipo", selection: $tipo) {
-                ForEach(TipoCarteira.allCases) { t in Text(t.nome).tag(t) }
+        ScrollView {
+            VStack(alignment: .leading, spacing: 14) {
+                Text(carteira == nil ? "Novo meio de pagamento" : "Editar \(carteira?.nome ?? "")")
+                    .font(.system(size: 19, weight: .bold))
+                TextField("Nome (ex.: Nubank, Inter)", text: $nome).campo()
+                Picker("Tipo", selection: $tipo) {
+                    ForEach(TipoCarteira.allCases) { t in Text(t.nome).tag(t) }
+                }
+                .pickerStyle(.segmented)
+                if tipo == .credito {
+                    HStack(spacing: 12) {
+                        VStack(alignment: .leading, spacing: 6) {
+                            Text("Fatura fecha dia").font(.system(size: 13)).foregroundStyle(.secondary)
+                            TextField("ex: 26", text: $fechamentoTexto).keyboardType(.numberPad).campo()
+                        }
+                        VStack(alignment: .leading, spacing: 6) {
+                            Text("Vence dia").font(.system(size: 13)).foregroundStyle(.secondary)
+                            TextField("ex: 2", text: $vencimentoTexto).keyboardType(.numberPad).campo()
+                        }
+                    }
+                    Text(explicacao)
+                        .font(.system(size: 12))
+                        .foregroundStyle(.secondary)
+                }
+                Button("Salvar") { salvar() }
+                    .buttonStyle(EstiloPrincipal(ativo: !nomeLimpo.isEmpty))
+                    .disabled(nomeLimpo.isEmpty)
+                    .padding(.top, 6)
             }
-            .pickerStyle(.segmented)
-            if tipo == .credito {
-                TextField("Dia de vencimento da fatura (ex: 10)", text: $diaTexto)
-                    .keyboardType(.numberPad)
-                    .campo()
-            }
-            Spacer()
-            Button("Salvar") {
-                let dia = min(max(Int(diaTexto) ?? 10, 1), 31)
-                ctx.insert(Carteira(nome: nome.trimmingCharacters(in: .whitespaces), tipo: tipo, diaVencimento: dia, ordem: ordem))
-                try? ctx.save()
-                dismiss()
-            }
-            .buttonStyle(EstiloPrincipal(ativo: !nome.trimmingCharacters(in: .whitespaces).isEmpty))
-            .disabled(nome.trimmingCharacters(in: .whitespaces).isEmpty)
+            .padding(28)
         }
-        .padding(28)
-        .folha([.height(440)])
+        .folha([.large])
+        .onAppear {
+            guard let c = carteira else { return }
+            nome = c.nome
+            tipo = c.tipo
+            vencimentoTexto = String(c.diaVencimento)
+            fechamentoTexto = c.diaFechamento > 0 ? String(c.diaFechamento) : ""
+        }
+    }
+
+    private var explicacao: String {
+        guard let f = Int(fechamentoTexto), (1...31).contains(f) else {
+            return "Com o dia de fechamento, cada compra no crédito entra sozinha na fatura certa e só sai do saldo no mês em que a fatura vence. Sem ele, a compra sai do saldo no dia."
+        }
+        let v = min(max(Int(vencimentoTexto) ?? 10, 1), 31)
+        let proximo = v <= f ? "do mês seguinte" : "do mesmo mês"
+        return "Compras até o dia \(f - 1) entram na fatura que fecha dia \(f) e vence dia \(v) \(proximo). A partir do dia \(f), vão pra fatura seguinte."
+    }
+
+    private func salvar() {
+        let venc = min(max(Int(vencimentoTexto) ?? 10, 1), 31)
+        let fecha = tipo == .credito ? min(max(Int(fechamentoTexto) ?? 0, 0), 31) : 0
+        if let c = carteira {
+            let antigo = c.nome
+            if antigo != nomeLimpo {
+                // leva o nome novo pras transações e pagamentos que usavam o antigo
+                for t in transacoes where t.carteira == antigo { t.carteira = nomeLimpo }
+                for conta in contas {
+                    conta.pagamentos = conta.pagamentos.map {
+                        $0.hasSuffix("|" + antigo) ? String($0.dropLast(antigo.count)) + nomeLimpo : $0
+                    }
+                }
+            }
+            c.nome = nomeLimpo
+            c.tipoRaw = tipo.rawValue
+            c.diaVencimento = venc
+            c.diaFechamento = fecha
+        } else {
+            let nova = Carteira(nome: nomeLimpo, tipo: tipo, diaVencimento: venc, ordem: ordem)
+            nova.diaFechamento = fecha
+            ctx.insert(nova)
+        }
+        try? ctx.save()
+        Notificacoes.reagendar(ctx)
+        dismiss()
     }
 }
 
 // MARK: - Guias de automação
 
 struct GuiaView: View {
-    enum Guia { case toqueDuplo, maquininha }
+    enum Guia { case toqueDuplo, maquininha, pix }
     let guia: Guia
     @Environment(\.dismiss) private var dismiss
 
-    private var titulo: String { guia == .toqueDuplo ? "Toque duplo nas costas" : "Registrar pela maquininha" }
+    private var titulo: String {
+        switch guia {
+        case .toqueDuplo: return "Toque duplo nas costas"
+        case .maquininha: return "Registrar pela maquininha"
+        case .pix: return "Pix pelo e-mail ou SMS"
+        }
+    }
     private var passos: [String] {
         switch guia {
         case .toqueDuplo:
