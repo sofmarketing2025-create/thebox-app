@@ -18,6 +18,7 @@ struct FormContaView: View {
     @State private var repetir: Bool
     @State private var parcelaTexto: String
     @State private var totalTexto: String
+    @State private var jurosTexto: String
     @State private var confirmarExclusao = false
 
     init(conta: Conta?, mesInicial: Int) {
@@ -34,11 +35,14 @@ struct FormContaView: View {
         let t = conta?.totalParcelas ?? 0
         _parcelaTexto = State(initialValue: p > 0 ? String(p) : "")
         _totalTexto = State(initialValue: t > 0 ? String(t) : "")
+        let j = conta?.juros ?? 0
+        _jurosTexto = State(initialValue: j > 0 ? j.formatted(.number.precision(.fractionLength(0...2)).locale(ptBR)) : "")
     }
 
     private var valor: Double? { lerValor(valorTexto) }
     private var dia: Int? { Int(diaTexto).flatMap { (1...31).contains($0) ? $0 : nil } }
     private var total: Int { Int(totalTexto) ?? 0 }
+    private var juros: Double { total > 0 ? max(lerValor(jurosTexto) ?? 0, 0) : 0 }
     private var parcela: Int { max(Int(parcelaTexto) ?? 1, 1) }
     private var valido: Bool {
         !nome.trimmingCharacters(in: .whitespaces).isEmpty
@@ -96,6 +100,15 @@ struct FormContaView: View {
                     }
                     Text("Parcelado? Preencha a parcela deste mês e o total (ex.: 3 de 12). Senão, deixe em branco.")
                         .font(.footnote).foregroundStyle(.secondary)
+                    if total > 0 {
+                        HStack(spacing: 10) {
+                            TextField("Juros ao mês (opcional)", text: $jurosTexto).keyboardType(.decimalPad)
+                            Text("% a.m.").foregroundStyle(.secondary)
+                        }
+                        .campo()
+                        Text("Usado no método avalanche da aba Quitar (quita primeiro os juros mais altos).")
+                            .font(.footnote).foregroundStyle(.secondary)
+                    }
 
                     Button("Salvar") { salvar() }
                         .buttonStyle(EstiloPrincipal(ativo: valido))
@@ -155,10 +168,13 @@ struct FormContaView: View {
             conta.parcelaAtual = p
             conta.totalParcelas = total
             conta.inicio = inicio
+            conta.juros = juros
         } else {
-            ctx.insert(Conta(nome: nomeLimpo, valor: v, dia: d, venceMesSeguinte: venceMesSeguinte,
+            let nova = Conta(nome: nomeLimpo, valor: v, dia: d, venceMesSeguinte: venceMesSeguinte,
                              categoria: categoria, repetir: repetir, parcelaAtual: p,
-                             totalParcelas: total, inicio: inicio))
+                             totalParcelas: total, inicio: inicio)
+            nova.juros = juros
+            ctx.insert(nova)
         }
         try? ctx.save()
         Notificacoes.reagendar(ctx)

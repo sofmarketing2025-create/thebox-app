@@ -1,13 +1,14 @@
 import SwiftUI
 
 enum Aba: CaseIterable {
-    case contas, home, analise, config
+    case contas, home, analise, quitar, config
 
     var titulo: String {
         switch self {
         case .contas: return "Contas"
         case .home: return "Home"
         case .analise: return "Análise"
+        case .quitar: return "Quitar"
         case .config: return "Config"
         }
     }
@@ -16,6 +17,7 @@ enum Aba: CaseIterable {
         case .contas: return "calendar.badge.clock"
         case .home: return "house"
         case .analise: return "chart.bar"
+        case .quitar: return "flag.checkered"
         case .config: return "gearshape"
         }
     }
@@ -24,6 +26,7 @@ enum Aba: CaseIterable {
         case .contas: return "calendar.badge.clock"
         case .home: return "house.fill"
         case .analise: return "chart.bar.fill"
+        case .quitar: return "flag.checkered"
         case .config: return "gearshape.fill"
         }
     }
@@ -78,6 +81,7 @@ struct MainView: View {
         case .contas: ContasView(mes: $mes)
         case .home: HomeView(mes: $mes)
         case .analise: AnaliseView(mes: $mes)
+        case .quitar: PlanoQuitacaoView()
         case .config: ConfigView()
         }
     }
@@ -99,14 +103,16 @@ struct BarraAbas: View {
                 Button {
                     withAnimation(.snappy(duration: 0.25)) { aba = a }
                 } label: {
-                    HStack(spacing: 6) {
+                    HStack(spacing: 5) {
                         Image(systemName: ativa ? a.iconeAtivo : a.icone).font(.system(size: 14))
-                        Text(a.titulo)
-                            .font(.system(size: 14, weight: ativa ? .semibold : .regular))
-                            .lineLimit(1).minimumScaleFactor(0.7)
+                        if ativa {
+                            Text(a.titulo)
+                                .font(.system(size: 14, weight: ativa ? .semibold : .regular))
+                                .lineLimit(1).minimumScaleFactor(0.7)
+                        }
                     }
                     .foregroundStyle(ativa ? Color.primary : Color.secondary)
-                    .frame(maxWidth: .infinity)
+                    .frame(maxWidth: ativa ? .infinity : 52)
                     .frame(height: 48)
                     .background {
                         if ativa {

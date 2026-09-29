@@ -41,23 +41,58 @@ enum Notificacoes {
         agora("\(valor.moeda) registrado", "\(titulo) · \(categoria)")
     }
 
-    /// Avisa quando uma categoria passa de 80% ou de 100% do limite
+    /// Faixas em que o app avisa (30%, 50%, 80%, 90% e 100% do limite)
+    static let faixas: [Double] = [0.3, 0.5, 0.8, 0.9, 1.0]
+
+    /// Maior faixa que foi cruzada agora (antes estava abaixo, agora está em cima ou acima)
+    private static func faixaCruzada(antes: Double, depois: Double, limite: Double) -> Double? {
+        guard limite > 0 else { return nil }
+        return faixas.last { antes < limite * $0 && depois >= limite * $0 }
+    }
+
+    private static func textoFaixa(_ f: Double, nome: String, gasto: Double, limite: Double) -> (String, String) {
+        if f >= 1 {
+            return ("Limite atingido — \(nome)",
+                    "Você usou \(porcento(gasto / limite)) do orçamento de \(nome): \(gasto.moeda) de \(limite.moeda).")
+        }
+        let titulo = f >= 0.8 ? "Quase no limite — \(nome)" : "\(porcento(f)) do orçamento — \(nome)"
+        return (titulo, "Você já usou \(porcento(gasto / limite)) de \(nome): \(gasto.moeda) de \(limite.moeda). Restam \((limite - gasto).moeda).")
+    }
+
+    /// Avisa quando a categoria ou o orçamento do mês passa de 30%, 50%, 80%, 90% ou 100%
     @MainActor
     static func verificarLimite(categoria: String, valor: Double, data: Date, ctx: ModelContext) {
         guard ligado("alertasInteligentes") else { return }
-        let cats = (try? ctx.fetch(FetchDescriptor<Categoria>())) ?? []
-        guard let cat = cats.first(where: { $0.nome == categoria && $0.tipo == .gasto }), cat.limite > 0 else { return }
         let fin = Financas(transacoes: (try? ctx.fetch(FetchDescriptor<Transacao>())) ?? [],
                            contas: (try? ctx.fetch(FetchDescriptor<Conta>())) ?? [],
-                           carteiras: (try? ctx.fetch(FetchDescriptor<Carteira>())) ?? [])
-        let total = fin.gastoPorCategoria(em: Mes.indice(data))[categoria] ?? 0
-        let antes = total - valor
-        if antes < cat.limite && total >= cat.limite {
-            agora("Limite atingido — \(categoria)",
-                  "Você atingiu 100% do orçamento de \(categoria) (\(cat.limite.moeda)).")
-        } else if antes < cat.limite * 0.8 && total >= cat.limite * 0.8 {
-            agora("Quase no limite — \(categoria)",
-                  "Você já usou \(porcento(total / cat.limite)) do orçamento de \(categoria) (\(cat.limite.moeda)).")
+                           carteiras: (try? ctx.fetch(FetchDescriptor<Carteira>())) ?? [],
+                           limites: (try? ctx.fetch(FetchDescriptor<LimiteMensal>())) ?? [])
+        let mes = Mes.indice(data)
+
+        // Categoria
+        let cats = (try? ctx.fetch(FetchDescriptor<Categoria>())) ?? []
+        if let cat = cats.first(where: { $0.nome == categoria && $0.tipo == .gasto }), cat.limite > 0 {
+            let total = fin.gastoPorCategoria(em: mes)[categoria] ?? 0
+            if let f = faixaCruzada(antes: total - valor, depois: total, limite: cat.limite) {
+                let t = textoFaixa(f, nome: categoria, gasto: total, limite: cat.limite)
+                agora(t.0, t.1)
+            }
+        }
+
+        // Orçamento total do mês
+        let limiteMes = fin.limite(em: mes)
+        if limiteMes > 0 {
+            let total = fin.gastoTotal(em: mes)
+            if let f = faixaCruzada(antes: total - valor, depois: total, limite: limiteMes) {
+                let nomeMes = Mes.nome(mes).lowercased()
+                if f >= 1 {
+                    agora("Orçamento do mês atingido",
+                          "Você já gastou \(total.moeda) de \(limiteMes.moeda) em \(nomeMes).")
+                } else {
+                    agora("\(porcento(f)) do orçamento do mês",
+                          "Você já gastou \(total.moeda) de \(limiteMes.moeda) em \(nomeMes). Restam \((limiteMes - total).moeda).")
+                }
+            }
         }
     }
 

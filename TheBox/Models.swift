@@ -141,6 +141,10 @@ final class Conta {
     var pagamentos: [String] = []
     /// Meses apagados só daquele mês ("apagar só essa"), formato "2026-10"
     var excluidos: [String] = []
+    /// Parcelas pagas adiantado (saem do fim do parcelamento)
+    var adiantadas: Int = 0
+    /// Juros ao mês em % (opcional, usado no método avalanche)
+    var juros: Double = 0
 
     init(nome: String, valor: Double, dia: Int, venceMesSeguinte: Bool, categoria: String,
          repetir: Bool, parcelaAtual: Int, totalParcelas: Int, inicio: Int) {
@@ -164,7 +168,7 @@ final class Conta {
         if excluidos.contains(Mes.chave(i)) { return false }
         let d = i - inicio
         if d < 0 { return false }
-        if parcelada { return max(parcelaAtual, 1) + d <= totalParcelas }
+        if parcelada { return max(parcelaAtual, 1) + d <= totalParcelas - adiantadas }
         return repetir || d == 0
     }
 
@@ -207,6 +211,8 @@ final class Conta {
                       repetir: repetir, parcelaAtual: parcelaAtual, totalParcelas: totalParcelas, inicio: inicio)
         c.pagamentos = pagamentos
         c.excluidos = excluidos
+        c.adiantadas = adiantadas
+        c.juros = juros
         return c
     }
 
