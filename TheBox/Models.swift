@@ -283,8 +283,23 @@ struct Financas {
         cartoes().filter { $0.faturaPaga(em: m) }.reduce(0) { $0 + fatura($1, em: m) }
     }
 
+    /// Saldo de hoje: só o que já entrou e já foi pago
     func saldo(em m: Int) -> Double {
         receitas(em: m) - gastosAvulsos(em: m) - contasPagasFora(em: m) - faturasPagas(em: m)
+    }
+
+    /// Contas do mês que ainda não foram marcadas como pagas
+    func contasAPagar(em m: Int) -> Double {
+        contasDoMes(m).filter { !$0.pago(em: m) }.reduce(0) { $0 + $1.valor }
+    }
+
+    func faturasAPagar(em m: Int) -> Double {
+        cartoes().filter { !$0.faturaPaga(em: m) }.reduce(0) { $0 + fatura($1, em: m) }
+    }
+
+    /// Quanto sobra no fim do mês depois de pagar todas as contas e faturas
+    func saldoPrevisto(em m: Int) -> Double {
+        saldo(em: m) - contasAPagar(em: m) - faturasAPagar(em: m)
     }
 
     /// Gastos do mês por categoria (transações + contas pagas)

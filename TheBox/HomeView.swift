@@ -34,7 +34,9 @@ struct HomeView: View {
                     BotaoCirculo(icone: "plus") { estado.abrirRegistro = true }
                 }
 
-                CartaoSaldo(saldo: fin.saldo(em: mes), progresso: limite > 0 ? gasto / limite : 0,
+                CartaoSaldo(saldo: fin.saldoPrevisto(em: mes), saldoHoje: fin.saldo(em: mes),
+                            aPagar: fin.contasAPagar(em: mes) + fin.faturasAPagar(em: mes),
+                            progresso: limite > 0 ? gasto / limite : 0,
                             ocultar: $ocultar) { detalhes = true }
 
                 HStack(alignment: .firstTextBaseline) {
@@ -81,7 +83,10 @@ struct HomeView: View {
 }
 
 struct CartaoSaldo: View {
+    /// Quanto sobra no fim do mês depois de pagar tudo
     let saldo: Double
+    let saldoHoje: Double
+    let aPagar: Double
     let progresso: Double
     @Binding var ocultar: Bool
     var detalhes: () -> Void
@@ -99,7 +104,14 @@ struct CartaoSaldo: View {
                 }
                 Text(ocultar ? "\(Moeda.atual.simbolo) ••••••" : saldo.moeda)
                     .font(.system(size: 32, weight: .heavy)).tracking(-1.2)
+                    .foregroundStyle(saldo < 0 && !ocultar ? Color.red : Color.primary)
                     .lineLimit(1).minimumScaleFactor(0.5)
+                if aPagar > 0 && !ocultar {
+                    Text("Hoje: \(saldoHoje.moeda) · faltam \(aPagar.moeda) em contas")
+                        .font(.system(size: 13))
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1).minimumScaleFactor(0.8)
+                }
                 BarraProgresso(p: progresso, cor: corPorcentagem(progresso), altura: 5)
                     .padding(.top, 10)
                     .padding(.bottom, 14)
@@ -177,7 +189,13 @@ struct DetalhesSaldoView: View {
                     Divider().overlay(Color.borda)
                     LinhaStat(titulo: "Faturas pagas", valor: "-" + fin.faturasPagas(em: mes).moeda)
                     Divider().overlay(Color.borda)
-                    LinhaStat(titulo: "Saldo", valor: fin.saldo(em: mes).moeda, destaque: true)
+                    LinhaStat(titulo: "Saldo hoje", valor: fin.saldo(em: mes).moeda)
+                    Divider().overlay(Color.borda)
+                    LinhaStat(titulo: "Contas a pagar", valor: "-" + fin.contasAPagar(em: mes).moeda)
+                    Divider().overlay(Color.borda)
+                    LinhaStat(titulo: "Faturas a pagar", valor: "-" + fin.faturasAPagar(em: mes).moeda)
+                    Divider().overlay(Color.borda)
+                    LinhaStat(titulo: "Sobra no fim do mês", valor: fin.saldoPrevisto(em: mes).moeda, destaque: true)
                 }
                 .padding(.horizontal, 20)
                 .padding(.vertical, 6)
