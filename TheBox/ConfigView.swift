@@ -750,8 +750,8 @@ struct GuiaView: View {
                 "Se o mesmo valor já foi registrado nos últimos 30 minutos (ex.: e-mail e SMS do mesmo Pix), o app ignora pra não duplicar.",
                 "Não reconheceu direito? Mande um exemplo do texto do seu banco que dá pra ajustar.",
                 "Banco que não manda e-mail (ex.: Nubank)? Use o comprovante: no app Atalhos, crie um atalho novo chamado \"Registrar comprovante\".",
-                "Toque no (i) do atalho e ligue \"Mostrar na Folha de Compartilhamento\"; em Tipos, deixe só Imagens e PDFs.",
-                "Adicione a ação \"Extrair Texto da Imagem\" (entrada: Entrada do Atalho) e depois \"Registrar por texto\" com Texto = Texto Extraído.",
+                "Toque no (i) do atalho e ligue \"Mostrar ao Compartilhar\"; em Tipos, deixe só Imagens e PDFs.",
+                "Adicione só a ação \"Registrar comprovante\" do LBO Finanças, com Comprovante = Entrada do Atalho. Ela lê PDF e imagem sozinha.",
                 "Depois de um Pix, toque em Compartilhar comprovante → Registrar comprovante. Pronto."
             ]
         case .maquininha:
@@ -789,9 +789,40 @@ struct GuiaView: View {
                         Text(passos[i]).font(.system(size: 14))
                     }
                 }
+                if guia == .pix { ultimoTexto }
             }
             .padding(28)
         }
         .folha([.large])
+    }
+
+    /// O último texto que chegou pelo "Registrar por texto"/"Registrar comprovante", pra conferir e mandar pro suporte
+    @ViewBuilder
+    private var ultimoTexto: some View {
+        let texto = UserDefaults.standard.string(forKey: "ultimoTextoLido") ?? ""
+        let data = UserDefaults.standard.object(forKey: "ultimoTextoData") as? Date
+        VStack(alignment: .leading, spacing: 8) {
+            HStack {
+                Text("ÚLTIMO TEXTO LIDO").font(.system(size: 12, weight: .semibold)).tracking(1.5).foregroundStyle(.secondary)
+                Spacer()
+                if !texto.isEmpty {
+                    Button("Copiar") { UIPasteboard.general.string = texto }
+                        .font(.system(size: 13, weight: .semibold))
+                }
+            }
+            if let data {
+                Text(data.formatted(.dateTime.day().month().hour().minute().locale(ptBR)))
+                    .font(.system(size: 12)).foregroundStyle(.secondary)
+            }
+            Text(texto.isEmpty ? "Nada recebido ainda." : texto)
+                .font(.system(size: 12, design: .monospaced))
+                .foregroundStyle(.secondary)
+                .lineLimit(25)
+                .textSelection(.enabled)
+        }
+        .padding(16)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Color.cartao2.opacity(0.5), in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+        .padding(.top, 10)
     }
 }

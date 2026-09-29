@@ -94,17 +94,32 @@ struct RegistrarTextoIntent: AppIntent {
         guard let container = Store.atual else {
             throw ErroAtalho(texto: "Entre no LBO Finanças primeiro.")
         }
-        let ctx = container.mainContext
-        guard let r = LeitorTexto.ler(texto), !LeitorTexto.duplicado(r, ctx: ctx) else { return .result() }
-        let cat = LeitorTexto.categoria(r, ctx: ctx)
-        let cart = LeitorTexto.carteira(r, ctx: ctx)
-        ctx.insert(Transacao(tipo: r.tipo, valor: r.valor, categoria: cat, carteira: cart, descricao: r.nome))
-        try ctx.save()
-        Notificacoes.registrado(valor: r.valor, titulo: r.nome.isEmpty ? r.tipo.nome : r.nome, categoria: cat)
-        if r.tipo == .gasto {
-            Notificacoes.verificarLimite(categoria: cat, valor: r.valor, data: .now, ctx: ctx)
+        try LeitorTexto.registrar(texto: texto, ctx: container.mainContext)
+        return .result()
+    }
+}
+
+/// Ação "Registrar comprovante": recebe o comprovante (PDF ou imagem) compartilhado e registra sozinho
+struct RegistrarComprovanteIntent: AppIntent {
+    static var title: LocalizedStringResource = "Registrar comprovante"
+    static var description = IntentDescription("Lê um comprovante de Pix ou transferência (PDF ou imagem) e registra o gasto ou a receita no LBO Finanças.")
+    static var openAppWhenRun: Bool = false
+
+    @Parameter(title: "Comprovante", supportedTypeIdentifiers: ["public.image", "com.adobe.pdf"],
+               inputConnectionBehavior: .connectToPreviousIntentResult)
+    var arquivo: IntentFile
+
+    static var parameterSummary: some ParameterSummary {
+        Summary("Registrar \(\.$arquivo)")
+    }
+
+    @MainActor
+    func perform() async throws -> some IntentResult {
+        guard let container = Store.atual else {
+            throw ErroAtalho(texto: "Entre no LBO Finanças primeiro.")
         }
-        Notificacoes.reagendar(ctx)
+        let texto = await LeitorArquivo.texto(de: arquivo)
+        try LeitorTexto.registrar(texto: texto, ctx: container.mainContext)
         return .result()
     }
 }

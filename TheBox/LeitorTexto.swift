@@ -18,6 +18,31 @@ enum LeitorTexto {
     private static let entrada = ["pix recebido", "recebeu", "voce recebeu", "recebimento", "transferencia recebida",
                                   "deposito", "creditado", "credito em conta", "salario", "rendimento", "foi recebido", "recebido"]
 
+    /// Lê o texto e registra o gasto/receita. Sempre avisa o que aconteceu.
+    static func registrar(texto: String, ctx: ModelContext) throws {
+        UserDefaults.standard.set(String(texto.prefix(3000)), forKey: "ultimoTextoLido")
+        UserDefaults.standard.set(Date.now, forKey: "ultimoTextoData")
+        guard let r = ler(texto) else {
+            Notificacoes.agora("Não achei o valor",
+                               texto.isEmpty ? "O comprovante chegou vazio. Tente compartilhar como imagem."
+                                             : "Veja o texto recebido em Config → Automação → Pix e mande pro suporte.")
+            return
+        }
+        if duplicado(r, ctx: ctx) {
+            Notificacoes.agora("Já estava registrado", "\(r.valor.moeda) já entrou nos últimos 30 minutos.")
+            return
+        }
+        let cat = categoria(r, ctx: ctx)
+        let cart = carteira(r, ctx: ctx)
+        ctx.insert(Transacao(tipo: r.tipo, valor: r.valor, categoria: cat, carteira: cart, descricao: r.nome))
+        try ctx.save()
+        Notificacoes.registrado(valor: r.valor, titulo: r.nome.isEmpty ? r.tipo.nome : r.nome, categoria: cat)
+        if r.tipo == .gasto {
+            Notificacoes.verificarLimite(categoria: cat, valor: r.valor, data: .now, ctx: ctx)
+        }
+        Notificacoes.reagendar(ctx)
+    }
+
     static func ler(_ bruto: String) -> Resultado? {
         let texto = bruto.replacingOccurrences(of: "\u{00a0}", with: " ")
         guard let valor = achaValor(texto), valor > 0 else { return nil }
