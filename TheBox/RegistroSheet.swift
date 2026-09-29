@@ -122,7 +122,7 @@ struct RegistroSheet: View {
 
     private var textoData: String {
         let cal = Calendar.current
-        let hora = data.formatted(.dateTime.hour(.twoDigits(amPM: .omitted)).minute().locale(ptBR))
+        let hora = data.formatted(.dateTime.hour(.twoDigits(amPM: .omitted)).minute(.twoDigits).locale(ptBR))
         if cal.isDateInToday(data) { return "Hoje · \(hora)" }
         if cal.isDateInYesterday(data) { return "Ontem · \(hora)" }
         if cal.isDateInTomorrow(data) { return "Amanhã · \(hora)" }

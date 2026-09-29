@@ -15,6 +15,7 @@ struct HomeView: View {
     @State private var detalhes = false
     @State private var todas = false
     @State private var editando: Transacao?
+    @State private var diaFiltro: Date?
 
     private var saudacao: String {
         let h = Calendar.current.component(.hour, from: .now)
@@ -52,8 +53,27 @@ struct HomeView: View {
                     Vazio(titulo: "Nenhuma transação ainda",
                           texto: "Dê 2 toques na parte traseira do iPhone para registrar")
                 } else {
+                    let dias = Array(Set(doMes.map { Calendar.current.startOfDay(for: $0.data) })).sorted(by: >)
+                    let lista = diaFiltro.map { d in doMes.filter { Calendar.current.isDate($0.data, inSameDayAs: d) } } ?? doMes
+                    FiltroDias(dias: dias, transacoes: doMes, selecionado: $diaFiltro)
+                    if let d = diaFiltro {
+                        let gastosDia = lista.filter { $0.tipo == .gasto }.reduce(0) { $0 + $1.valor }
+                        let receitasDia = lista.filter { $0.tipo == .receita }.reduce(0) { $0 + $1.valor }
+                        HStack {
+                            Text(d.formatted(.dateTime.weekday(.wide).day().month(.wide).locale(ptBR)))
+                                .font(.system(size: 14, weight: .semibold))
+                            Spacer()
+                            VStack(alignment: .trailing, spacing: 2) {
+                                Text("Gastou \(gastosDia.moeda)").font(.system(size: 14, weight: .bold))
+                                if receitasDia > 0 {
+                                    Text("Entrou \(receitasDia.moeda)").font(.system(size: 12)).foregroundStyle(.green)
+                                }
+                            }
+                        }
+                        .padding(.horizontal, 4)
+                    }
                     VStack(spacing: 10) {
-                        ForEach(doMes.prefix(15)) { t in
+                        ForEach(diaFiltro == nil ? Array(lista.prefix(15)) : lista) { t in
                             LinhaTransacao(transacao: t, iconeCarteira: iconeCarteira(t.carteira))
                                 .onTapGesture { editando = t }
                                 .contextMenu {
@@ -71,6 +91,7 @@ struct HomeView: View {
         .sheet(isPresented: $detalhes) { DetalhesSaldoView(mes: mes) }
         .sheet(isPresented: $todas) { TodasTransacoesView() }
         .sheet(item: $editando) { t in RegistroSheet(editando: t) }
+        .onChange(of: mes) { _, _ in diaFiltro = nil }
     }
 
     private func apagar(_ t: Transacao) {
@@ -79,6 +100,56 @@ struct HomeView: View {
 
     private func iconeCarteira(_ nome: String) -> String {
         carteiras.first { $0.nome == nome }?.tipo.icone ?? "creditcard"
+    }
+}
+
+/// Fileira "Todos · 29 · 28 · 27..." com o total gasto em cada dia
+struct FiltroDias: View {
+    let dias: [Date]
+    let transacoes: [Transacao]
+    @Binding var selecionado: Date?
+
+    private func gasto(_ d: Date) -> Double {
+        transacoes.filter { $0.tipo == .gasto && Calendar.current.isDate($0.data, inSameDayAs: d) }
+            .reduce(0) { $0 + $1.valor }
+    }
+
+    var body: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 8) {
+                botao(ativo: selecionado == nil) {
+                    Text("Todos").font(.system(size: 14, weight: .semibold))
+                } acao: { selecionado = nil }
+                ForEach(dias, id: \.self) { d in
+                    botao(ativo: selecionado.map { Calendar.current.isDate($0, inSameDayAs: d) } ?? false) {
+                        VStack(spacing: 1) {
+                            Text(d.formatted(.dateTime.weekday(.abbreviated).locale(ptBR)).lowercased())
+                                .font(.system(size: 11))
+                            Text(d.formatted(.dateTime.day()))
+                                .font(.system(size: 17, weight: .bold))
+                            Text(gasto(d).curto)
+                                .font(.system(size: 10))
+                        }
+                    } acao: { selecionado = d }
+                }
+            }
+            .padding(.vertical, 2)
+        }
+    }
+
+    private func botao<C: View>(ativo: Bool, @ViewBuilder conteudo: () -> C, acao: @escaping () -> Void) -> some View {
+        Button {
+            withAnimation(.snappy(duration: 0.2)) { acao() }
+        } label: {
+            conteudo()
+                .foregroundStyle(ativo ? Color.sobreDestaque : Color.primary)
+                .frame(minWidth: 52, minHeight: 60)
+                .padding(.horizontal, 6)
+                .background(ativo ? Color.destaque : Color.cartao,
+                            in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+                .overlay(RoundedRectangle(cornerRadius: 16, style: .continuous).stroke(Color.borda))
+        }
+        .buttonStyle(.plain)
     }
 }
 
@@ -152,7 +223,7 @@ struct LinhaTransacao: View {
                 Text((transacao.tipo == .gasto ? "-" : "+") + transacao.valor.moeda)
                     .font(.system(size: 15, weight: .semibold))
                     .foregroundStyle(transacao.tipo == .gasto ? Color.primary : Color.green)
-                Text(transacao.data.formatted(.dateTime.day().month(.abbreviated).locale(ptBR)) + " · " + transacao.data.formatted(.dateTime.hour(.twoDigits(amPM: .omitted)).minute().locale(ptBR)))
+                Text(transacao.data.formatted(.dateTime.day().month(.abbreviated).locale(ptBR)) + " · " + transacao.data.formatted(.dateTime.hour(.twoDigits(amPM: .omitted)).minute(.twoDigits).locale(ptBR)))
                     .font(.system(size: 14))
                     .foregroundStyle(.secondary)
             }
@@ -269,7 +340,7 @@ struct TodasTransacoesView: View {
                             HStack {
                                 VStack(alignment: .leading, spacing: 3) {
                                     Text(t.titulo).font(.system(size: 14, weight: .semibold))
-                                    Text("\(t.data.formatted(.dateTime.hour(.twoDigits(amPM: .omitted)).minute().locale(ptBR))) · \(t.categoria) · \(t.carteira)").font(.footnote).foregroundStyle(.secondary)
+                                    Text("\(t.data.formatted(.dateTime.hour(.twoDigits(amPM: .omitted)).minute(.twoDigits).locale(ptBR))) · \(t.categoria) · \(t.carteira)").font(.footnote).foregroundStyle(.secondary)
                                 }
                                 Spacer()
                                 Text((t.tipo == .gasto ? "-" : "+") + t.valor.moeda)
