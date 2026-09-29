@@ -40,6 +40,18 @@ enum LeitorTexto {
 
     /// Nome depois de "para"/"em" (gasto) ou "de"/"por" (receita), sem pegar o próprio valor
     static func achaNome(_ s: String, tipo: TipoTransacao) -> String {
+        // Comprovante (ex.: Nubank): "Destino ... Nome\nFULANO" (ou "Origem" quando é receita)
+        if let r = s.range(of: tipo == .gasto ? "Destino" : "Origem", options: .caseInsensitive) {
+            let linhas = s[r.upperBound...].split(separator: "\n")
+                .map { $0.trimmingCharacters(in: .whitespaces) }
+                .filter { !$0.isEmpty }
+            if let i = linhas.firstIndex(where: { $0.lowercased() == "nome" }), i + 1 < linhas.count {
+                return linhas[i + 1]
+            }
+            if let l = linhas.first(where: { $0.lowercased().hasPrefix("nome ") }) {
+                return String(l.dropFirst(5)).trimmingCharacters(in: .whitespaces)
+            }
+        }
         let fimNome = #"(?=\s*(?:[\.,;:\n\(]|\bno valor\b|\bvia\b|\bcom\b|\bem \d|\bno dia\b|\bàs\b|\bas \d|\bpara\b|\bno cart|$))"#
         let preposicoes = tipo == .gasto ? ["para", "pra", "em", "no", "na"] : ["de", "por"]
         for p in preposicoes {

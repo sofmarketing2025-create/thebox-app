@@ -748,7 +748,11 @@ struct GuiaView: View {
                 "Em Texto, escolha Entrada do Atalho, toque nela e selecione \"Conteúdo\" (o corpo do e-mail ou da mensagem).",
                 "Salve. Cada Pix enviado vira gasto e cada Pix recebido vira receita, com o nome da pessoa e o valor.",
                 "Se o mesmo valor já foi registrado nos últimos 30 minutos (ex.: e-mail e SMS do mesmo Pix), o app ignora pra não duplicar.",
-                "Não reconheceu direito? Mande um exemplo do texto do seu banco que dá pra ajustar."
+                "Não reconheceu direito? Mande um exemplo do texto do seu banco que dá pra ajustar.",
+                "Banco que não manda e-mail (ex.: Nubank)? Use o comprovante: no app Atalhos, crie um atalho novo chamado \"Registrar comprovante\".",
+                "Toque no (i) do atalho e ligue \"Mostrar na Folha de Compartilhamento\"; em Tipos, deixe só Imagens e PDFs.",
+                "Adicione a ação \"Extrair Texto da Imagem\" (entrada: Entrada do Atalho) e depois \"Registrar por texto\" com Texto = Texto Extraído.",
+                "Depois de um Pix, toque em Compartilhar comprovante → Registrar comprovante. Pronto."
             ]
         case .maquininha:
             return [
