@@ -42,7 +42,7 @@ struct RegistroSheet: View {
                 VStack(alignment: .leading, spacing: 20) {
                     topo
                     if mostrarData {
-                        DatePicker("Data", selection: $data, in: ...Date.now, displayedComponents: .date)
+                        DatePicker("Data", selection: $data, displayedComponents: .date)
                             .datePickerStyle(.graphical)
                             .labelsHidden()
                     }
@@ -124,6 +124,7 @@ struct RegistroSheet: View {
         let cal = Calendar.current
         if cal.isDateInToday(data) { return "Hoje" }
         if cal.isDateInYesterday(data) { return "Ontem" }
+        if cal.isDateInTomorrow(data) { return "Amanhã" }
         return data.formatted(.dateTime.day().month(.abbreviated).locale(ptBR))
     }
 
