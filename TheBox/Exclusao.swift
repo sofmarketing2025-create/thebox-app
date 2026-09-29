@@ -35,6 +35,21 @@ enum Exclusao {
         }
     }
 
+    /// Apaga várias contas de uma vez (ex.: todas as "Nubank" de uma dívida)
+    static func contas(_ lista: [Conta], nome: String, ctx: ModelContext) {
+        let copias = lista.map { $0.copia() }
+        withAnimation {
+            for c in lista { ctx.delete(c) }
+            try? ctx.save()
+        }
+        Notificacoes.reagendar(ctx)
+        AppState.shared.oferecerDesfazer("\(nome) apagada") {
+            for c in copias { ctx.insert(c) }
+            try? ctx.save()
+            Notificacoes.reagendar(ctx)
+        }
+    }
+
     /// Apaga a conta só daquele mês; os outros meses continuam
     static func contaSoNoMes(_ c: Conta, mes: Int, ctx: ModelContext) {
         withAnimation {
