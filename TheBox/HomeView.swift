@@ -152,7 +152,7 @@ struct LinhaTransacao: View {
                 Text((transacao.tipo == .gasto ? "-" : "+") + transacao.valor.moeda)
                     .font(.system(size: 15, weight: .semibold))
                     .foregroundStyle(transacao.tipo == .gasto ? Color.primary : Color.green)
-                Text(transacao.data.formatted(.dateTime.day().month(.abbreviated).locale(ptBR)))
+                Text(transacao.data.formatted(.dateTime.day().month(.abbreviated).locale(ptBR)) + " · " + transacao.data.formatted(.dateTime.hour(.twoDigits(amPM: .omitted)).minute().locale(ptBR)))
                     .font(.system(size: 14))
                     .foregroundStyle(.secondary)
             }
@@ -269,7 +269,7 @@ struct TodasTransacoesView: View {
                             HStack {
                                 VStack(alignment: .leading, spacing: 3) {
                                     Text(t.titulo).font(.system(size: 14, weight: .semibold))
-                                    Text("\(t.categoria) · \(t.carteira)").font(.footnote).foregroundStyle(.secondary)
+                                    Text("\(t.data.formatted(.dateTime.hour(.twoDigits(amPM: .omitted)).minute().locale(ptBR))) · \(t.categoria) · \(t.carteira)").font(.footnote).foregroundStyle(.secondary)
                                 }
                                 Spacer()
                                 Text((t.tipo == .gasto ? "-" : "+") + t.valor.moeda)

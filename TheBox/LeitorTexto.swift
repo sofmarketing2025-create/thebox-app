@@ -28,13 +28,14 @@ enum LeitorTexto {
                                              : "Veja o texto recebido em Config → Automação → Pix e mande pro suporte.")
             return
         }
-        if duplicado(r, ctx: ctx) {
-            Notificacoes.agora("Já estava registrado", "\(r.valor.moeda) já entrou nos últimos 30 minutos.")
+        let quando = achaData(texto) ?? .now
+        if duplicado(r, quando: quando, ctx: ctx) {
+            Notificacoes.agora("Já estava registrado", "\(r.valor.moeda) desse horário já está no app.")
             return
         }
         let cat = categoria(r, ctx: ctx)
         let cart = carteira(r, ctx: ctx)
-        ctx.insert(Transacao(tipo: r.tipo, valor: r.valor, categoria: cat, carteira: cart, descricao: r.nome))
+        ctx.insert(Transacao(tipo: r.tipo, valor: r.valor, categoria: cat, carteira: cart, descricao: r.nome, data: quando))
         try ctx.save()
         Notificacoes.registrado(valor: r.valor, titulo: r.nome.isEmpty ? r.tipo.nome : r.nome, categoria: cat)
         if r.tipo == .gasto {
@@ -51,6 +52,51 @@ enum LeitorTexto {
         let ehEntrada = entrada.contains { t.contains($0) }
         let tipo: TipoTransacao = (ehEntrada && !ehSaida) ? .receita : .gasto
         return Resultado(valor: valor, tipo: tipo, nome: achaNome(texto, tipo: tipo), texto: t)
+    }
+
+    /// Data e hora que vêm no texto ("29/09/2026 às 18:03", "29 SET 2026 - 18:03:21", "13 de setembro de 2026, às 19:52").
+    /// Só aceita se for dos últimos 30 dias; senão, fica com a hora de agora.
+    static func achaData(_ s: String) -> Date? {
+        let t = Categorizador.normalizar(s)
+        let cal = Calendar.current
+        let agora = Date.now
+        var dia: Int?
+        var mes: Int?
+        var ano = cal.component(.year, from: agora)
+        func grupo(_ m: NSTextCheckingResult, _ i: Int) -> String? {
+            guard let r = Range(m.range(at: i), in: t) else { return nil }
+            return String(t[r])
+        }
+        let meses = ["jan", "fev", "mar", "abr", "mai", "jun", "jul", "ago", "set", "out", "nov", "dez"]
+        if let re = try? NSRegularExpression(pattern: #"\b(\d{1,2})/(\d{1,2})(?:/(\d{2,4}))?\b"#),
+           let m = re.firstMatch(in: t, range: NSRange(t.startIndex..., in: t)) {
+            dia = grupo(m, 1).flatMap { Int($0) }
+            mes = grupo(m, 2).flatMap { Int($0) }
+            if let a = grupo(m, 3).flatMap({ Int($0) }) { ano = a < 100 ? 2000 + a : a }
+        } else if let re = try? NSRegularExpression(pattern: #"\b(\d{1,2})\s*(?:de\s+)?(jan|fev|mar|abr|mai|jun|jul|ago|set|out|nov|dez)[a-z]*\.?\s*(?:de\s+)?(\d{4})?"#),
+                  let m = re.firstMatch(in: t, range: NSRange(t.startIndex..., in: t)) {
+            dia = grupo(m, 1).flatMap { Int($0) }
+            mes = grupo(m, 2).flatMap { meses.firstIndex(of: $0) }.map { $0 + 1 }
+            if let a = grupo(m, 3).flatMap({ Int($0) }) { ano = a }
+        }
+        var hora = cal.component(.hour, from: agora)
+        var minuto = cal.component(.minute, from: agora)
+        var achouHora = false
+        if let re = try? NSRegularExpression(pattern: #"\b([01]?\d|2[0-3])[:h](\d{2})\b"#),
+           let m = re.firstMatch(in: t, range: NSRange(t.startIndex..., in: t)),
+           let h = grupo(m, 1).flatMap({ Int($0) }), let mi = grupo(m, 2).flatMap({ Int($0) }) {
+            hora = h
+            minuto = mi
+            achouHora = true
+        }
+        guard dia != nil || achouHora else { return nil }
+        var c = cal.dateComponents([.year, .month, .day], from: agora)
+        if let dia, let mes { c.day = dia; c.month = mes; c.year = ano }
+        c.hour = hora
+        c.minute = minuto
+        guard let d = cal.date(from: c), d <= agora.addingTimeInterval(60),
+              d >= agora.addingTimeInterval(-30 * 24 * 3600) else { return nil }
+        return d
     }
 
     /// Primeiro "R$ 1.234,56" do texto
@@ -96,12 +142,17 @@ enum LeitorTexto {
     }
 
     /// Evita registrar duas vezes (ex.: e-mail e SMS do mesmo Pix, ou a compra que já veio pela maquininha)
-    static func duplicado(_ r: Resultado, ctx: ModelContext) -> Bool {
-        let limite = Date.now.addingTimeInterval(-30 * 60)
+    /// Mesmo valor e tipo: registrado nos últimos 30 min, ou com o mesmo horário do comprovante (±2 min)
+    static func duplicado(_ r: Resultado, quando: Date, ctx: ModelContext) -> Bool {
+        let limite = min(Date.now.addingTimeInterval(-30 * 60), quando.addingTimeInterval(-120))
         var busca = FetchDescriptor<Transacao>(predicate: #Predicate { $0.data > limite })
-        busca.fetchLimit = 50
+        busca.fetchLimit = 200
         let recentes = (try? ctx.fetch(busca)) ?? []
-        return recentes.contains { $0.tipoRaw == r.tipo.rawValue && abs($0.valor - r.valor) < 0.01 }
+        let meiaHora = Date.now.addingTimeInterval(-30 * 60)
+        return recentes.contains {
+            $0.tipoRaw == r.tipo.rawValue && abs($0.valor - r.valor) < 0.01
+                && ($0.data > meiaHora || abs($0.data.timeIntervalSince(quando)) < 120)
+        }
     }
 
     static func categoria(_ r: Resultado, ctx: ModelContext) -> String {
