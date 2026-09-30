@@ -82,6 +82,7 @@ final class Sessao {
         if t.contains("offline") || t.contains("network") || t.contains("internet") || t.contains("timed out") {
             return "Sem conexão com a internet."
         }
+        if t.contains("sessao_backup") { return "Sua conta precisa ser confirmada de novo: toque em Sair e entre de novo. Seus dados continuam no iPhone." }
         if t.contains("excluir_conta") { return "Exclusão de conta ainda não configurada no servidor." }
         if t.contains("backups") && (t.contains("does not exist") || t.contains("42p01") || t.contains("schema cache")) {
             return "O backup ainda não foi configurado no servidor (falta rodar o SQL do backup)."

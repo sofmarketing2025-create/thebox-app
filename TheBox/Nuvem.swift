@@ -64,6 +64,11 @@ struct BackupDados: Codable {
     }
 }
 
+enum ErroBackup: Error, LocalizedError {
+    case semSessao
+    var errorDescription: String? { "sessao_backup" }
+}
+
 struct LinhaBackup: Codable {
     var user_id: String
     var dados: BackupDados
@@ -167,6 +172,11 @@ enum Backup {
         let hash = SHA256.hash(data: json).map { String(format: "%02x", $0) }.joined()
         let d = UserDefaults.standard
         if !forcar && hash == d.string(forKey: "backupHash") { return nil }
+        guard await temSessao() else {
+            let msg = semSessao
+            d.set(msg, forKey: "erroBackup")
+            return msg
+        }
 
         // dá uns segundos a mais pro envio terminar quando o app vai pro fundo
         let tarefa = UIApplication.shared.beginBackgroundTask(withName: "backup")
@@ -186,8 +196,16 @@ enum Backup {
         }
     }
 
+    static let semSessao = "Sua conta precisa ser confirmada de novo pra usar o backup: toque em Sair (em Conta, aqui embaixo) e entre de novo. Seus dados continuam no iPhone."
+
+    /// Login ainda válido no servidor? (se o app foi reinstalado, o iPhone pode ter apagado)
+    static func temSessao() async -> Bool {
+        (try? await Nuvem.client.auth.session) != nil
+    }
+
     static func baixar() async throws -> LinhaBackup? {
         guard let uid = UserDefaults.standard.string(forKey: "uidAtual") else { return nil }
+        guard await temSessao() else { throw ErroBackup.semSessao }
         let linhas: [LinhaBackup] = try await Nuvem.client.from("backups")
             .select()
             .eq("user_id", value: uid.lowercased())
