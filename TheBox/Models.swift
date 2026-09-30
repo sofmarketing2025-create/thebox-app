@@ -129,6 +129,10 @@ final class Transacao {
     var mes: Int { Mes.indice(data) }
     var titulo: String { descricao.isEmpty ? categoria : descricao }
 
+    static let categoriaAjuste = "Ajuste de saldo"
+    /// Ajuste pra o saldo do app bater com o do banco (não conta como gasto nem receita de verdade)
+    var ehAjuste: Bool { categoria == Transacao.categoriaAjuste }
+
     /// Cópia solta (ainda não salva), usada pra desfazer uma exclusão
     func copia() -> Transacao {
         Transacao(tipo: tipo, valor: valor, categoria: categoria, carteira: carteira, descricao: descricao, data: data)
@@ -276,7 +280,7 @@ struct Financas {
 
     /// Todos os gastos registrados no mês da compra (pra ver quanto você gasta)
     func gastosTransacoes(em m: Int) -> Double {
-        transacoes(em: m).filter { $0.tipo == .gasto }.reduce(0) { $0 + $1.valor }
+        transacoes(em: m).filter { $0.tipo == .gasto && !$0.ehAjuste }.reduce(0) { $0 + $1.valor }
     }
 
     /// Gastos que saem do saldo na hora (os do cartão com fatura só saem no vencimento)
@@ -340,7 +344,7 @@ struct Financas {
     /// Gastos do mês por categoria (transações + contas pagas)
     func gastoPorCategoria(em m: Int) -> [String: Double] {
         var r: [String: Double] = [:]
-        for t in transacoes(em: m) where t.tipo == .gasto { r[t.categoria, default: 0] += t.valor }
+        for t in transacoes(em: m) where t.tipo == .gasto && !t.ehAjuste { r[t.categoria, default: 0] += t.valor }
         for c in contasPagas(em: m) { r[c.categoria.isEmpty ? "Outros" : c.categoria, default: 0] += c.valor }
         return r
     }

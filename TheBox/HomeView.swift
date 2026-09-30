@@ -299,6 +299,9 @@ struct LinhaTransacao: View {
 
 struct DetalhesSaldoView: View {
     let mes: Int
+    @Environment(\.modelContext) private var ctx
+    @Environment(\.dismiss) private var dismiss
+    @State private var ajustando = false
     @Query private var transacoes: [Transacao]
     @Query private var contas: [Conta]
     @Query(sort: \Carteira.ordem) private var carteiras: [Carteira]
@@ -348,11 +351,37 @@ struct DetalhesSaldoView: View {
 
                 Text("Contas pagas no cartão de crédito não saem do saldo na hora: entram na fatura do mês seguinte.")
                     .font(.footnote).foregroundStyle(.secondary)
+
+                if mes == Mes.indice() {
+                    Button {
+                        ajustando = true
+                    } label: {
+                        Label("Ajustar saldo igual ao do banco", systemImage: "equal.circle")
+                    }
+                    .buttonStyle(EstiloContorno())
+                    .padding(.top, 6)
+                    Text("Digite quanto tem na sua conta agora. O app cria um ajuste com a diferença, sem mexer nos seus gastos e categorias.")
+                        .font(.footnote).foregroundStyle(.secondary)
+                }
             }
             .padding(24)
             .padding(.top, 10)
         }
         .folha([.medium, .large])
+        .sheet(isPresented: $ajustando) {
+            let atual = Financas(transacoes: transacoes, contas: contas, carteiras: carteiras).saldo(em: mes)
+            EditarValorSheet(titulo: "Saldo no banco agora",
+                             subtitulo: "Hoje o app mostra \(atual.moeda). Quanto tem na sua conta?",
+                             valor: max(atual, 0)) { real in
+                let diferenca = real - atual
+                guard abs(diferenca) >= 0.01 else { return }
+                ctx.insert(Transacao(tipo: diferenca > 0 ? .receita : .gasto, valor: abs(diferenca),
+                                     categoria: Transacao.categoriaAjuste, carteira: "",
+                                     descricao: "Ajuste de saldo"))
+                try? ctx.save()
+                Notificacoes.agora("Saldo ajustado", "Agora o app mostra \(real.moeda), igual ao banco.")
+            }
+        }
     }
 }
 
