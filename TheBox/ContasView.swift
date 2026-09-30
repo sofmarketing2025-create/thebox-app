@@ -13,6 +13,7 @@ struct ContasView: View {
     @State private var criando = false
     @State private var pagando: Conta?
     @State private var calendario = false
+    @State private var apagando: Conta?
 
     var body: some View {
         let fin = Financas(transacoes: transacoes, contas: contas, carteiras: carteiras)
@@ -72,6 +73,7 @@ struct ContasView: View {
                             }
                         }
                         .onTapGesture { editando = conta }
+                        .deslizarParaApagar { apagando = conta }
                         .contextMenu {
                             Button { editando = conta } label: { Label("Editar", systemImage: "pencil") }
                             if conta.recorrente {
@@ -94,6 +96,21 @@ struct ContasView: View {
         .background(Color.fundo)
         .sheet(isPresented: $criando) { FormContaView(conta: nil, mesInicial: mes) }
         .sheet(isPresented: $calendario) { CalendarioView(mes: mes) }
+        .confirmationDialog("Apagar \(apagando?.nome ?? "")?",
+                            isPresented: Binding(get: { apagando != nil }, set: { if !$0 { apagando = nil } }),
+                            titleVisibility: .visible,
+                            presenting: apagando) { conta in
+            if conta.recorrente {
+                Button("Só de \(Mes.nome(mes).lowercased())", role: .destructive) {
+                    Exclusao.contaSoNoMes(conta, mes: mes, ctx: ctx)
+                    apagando = nil
+                }
+            }
+            Button(conta.recorrente ? "Todos os meses" : "Apagar", role: .destructive) {
+                Exclusao.conta(conta, ctx: ctx)
+                apagando = nil
+            }
+        }
         .sheet(item: $editando) { conta in FormContaView(conta: conta, mesInicial: mes) }
         .confirmationDialog("Como você pagou?",
                             isPresented: Binding(get: { pagando != nil }, set: { if !$0 { pagando = nil } }),

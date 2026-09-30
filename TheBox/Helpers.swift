@@ -527,3 +527,64 @@ struct Compartilhar: UIViewControllerRepresentable {
     }
     func updateUIViewController(_ vc: UIActivityViewController, context: Context) {}
 }
+
+// MARK: - Arrastar pro lado pra apagar
+
+/// Arrastando o cartão pro lado aparece uma lixeira vermelha; tocando nela, apaga.
+struct DeslizarParaApagar: ViewModifier {
+    let acao: () -> Void
+    @State private var deslocamento: CGFloat = 0
+    private let largura: CGFloat = 76
+
+    func body(content: Content) -> some View {
+        ZStack {
+            HStack {
+                if deslocamento > 0 { lixeira }
+                Spacer()
+                if deslocamento < 0 { lixeira }
+            }
+            content
+                .offset(x: deslocamento)
+                .simultaneousGesture(
+                    DragGesture(minimumDistance: 18)
+                        .onChanged { g in
+                            guard abs(g.translation.width) > abs(g.translation.height) * 1.4 else { return }
+                            deslocamento = max(-largura * 1.3, min(largura * 1.3, g.translation.width))
+                        }
+                        .onEnded { g in
+                            withAnimation(.snappy(duration: 0.25)) {
+                                if g.translation.width < -largura * 0.6 {
+                                    deslocamento = -largura
+                                } else if g.translation.width > largura * 0.6 {
+                                    deslocamento = largura
+                                } else {
+                                    deslocamento = 0
+                                }
+                            }
+                        }
+                )
+        }
+    }
+
+    private var lixeira: some View {
+        Button {
+            withAnimation(.snappy(duration: 0.2)) { deslocamento = 0 }
+            acao()
+        } label: {
+            Image(systemName: "trash.fill")
+                .font(.system(size: 20, weight: .semibold))
+                .foregroundStyle(.white)
+                .frame(width: largura - 10)
+                .frame(maxHeight: .infinity)
+                .background(Color.red, in: RoundedRectangle(cornerRadius: 22, style: .continuous))
+        }
+        .buttonStyle(.plain)
+        .transition(.opacity)
+    }
+}
+
+extension View {
+    func deslizarParaApagar(_ acao: @escaping () -> Void) -> some View {
+        modifier(DeslizarParaApagar(acao: acao))
+    }
+}

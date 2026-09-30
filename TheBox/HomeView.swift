@@ -80,6 +80,7 @@ struct HomeView: View {
                         ForEach(diaFiltro == nil ? Array(lista.prefix(15)) : lista) { t in
                             LinhaTransacao(transacao: t, iconeCarteira: iconeCarteira(t.carteira))
                                 .onTapGesture { editando = t }
+                                .deslizarParaApagar { apagar(t) }
                                 .contextMenu {
                                     Button { editando = t } label: { Label("Editar", systemImage: "pencil") }
                                     Button(role: .destructive) { apagar(t) } label: { Label("Apagar", systemImage: "trash") }
