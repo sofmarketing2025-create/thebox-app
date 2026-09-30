@@ -16,6 +16,7 @@ enum Store {
         let config = ModelConfiguration(url: url(uid))
         do {
             let c = try ModelContainer(for: Transacao.self, Conta.self, Categoria.self, Carteira.self, LimiteMensal.self,
+                                       Recorrencia.self, Caixinha.self,
                                        configurations: config)
             cache[uid] = c
             semear(c.mainContext)

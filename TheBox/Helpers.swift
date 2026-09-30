@@ -563,7 +563,6 @@ struct DeslizarParaApagar: ViewModifier {
     func body(content: Content) -> some View {
         ZStack {
             HStack {
-                if deslocamento > 0 { lixeira }
                 Spacer()
                 if deslocamento < 0 { lixeira }
             }
@@ -573,14 +572,12 @@ struct DeslizarParaApagar: ViewModifier {
                     DragGesture(minimumDistance: 18)
                         .onChanged { g in
                             guard abs(g.translation.width) > abs(g.translation.height) * 1.4 else { return }
-                            deslocamento = max(-largura * 1.3, min(largura * 1.3, g.translation.width))
+                            deslocamento = max(-largura * 1.3, min(0, g.translation.width))
                         }
                         .onEnded { g in
                             withAnimation(.snappy(duration: 0.25)) {
                                 if g.translation.width < -largura * 0.6 {
                                     deslocamento = -largura
-                                } else if g.translation.width > largura * 0.6 {
-                                    deslocamento = largura
                                 } else {
                                     deslocamento = 0
                                 }

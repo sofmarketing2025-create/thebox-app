@@ -154,6 +154,7 @@ func mesAno(_ i: Int) -> String {
 struct PlanoQuitacaoView: View {
     @Environment(\.modelContext) private var ctx
     @Query private var contas: [Conta]
+    @Query private var recorrencias: [Recorrencia]
     @Query private var transacoes: [Transacao]
     @Query(sort: \Carteira.ordem) private var carteiras: [Carteira]
     @AppStorage("renda") private var rendaManual: Double = 0
@@ -167,12 +168,12 @@ struct PlanoQuitacaoView: View {
 
     var body: some View {
         let hoje = Mes.indice()
-        let fin = Financas(transacoes: transacoes, contas: contas, carteiras: carteiras)
+        let fin = Financas(transacoes: transacoes, contas: contas, carteiras: carteiras, recorrencias: recorrencias)
         let dividas = PlanoCalculo.dividas(contas, hoje: hoje)
         let ordem = PlanoCalculo.ordenar(dividas, metodo)
         let totalDevido = dividas.reduce(0) { $0 + $1.total }
         let fimNatural = dividas.map(\.fim).max() ?? hoje
-        let registrada = (hoje...(hoje + 2)).map { fin.receitas(em: $0) }.max() ?? 0
+        let registrada = (hoje...(hoje + 2)).map { fin.receitas(em: $0) + fin.receitasAReceber(em: $0) }.max() ?? 0
         let renda = rendaManual > 0 ? rendaManual : registrada
         let mediaGastos = mediaGastosAvulsos(fin, hoje: hoje)
         let contasDe: (Int) -> Double = { m in fin.contasDoMes(m).reduce(0) { $0 + $1.valor } }
@@ -186,6 +187,7 @@ struct PlanoQuitacaoView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 14) {
                 Cabecalho(sub: "Plano de quitação", titulo: "Quitar")
+                SecaoCaixinhas()
 
                 if dividas.isEmpty {
                     Vazio(icone: "checkmark.seal", titulo: "Nenhuma dívida com fim",

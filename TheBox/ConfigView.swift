@@ -4,7 +4,7 @@ import UniformTypeIdentifiers
 
 struct ConfigView: View {
     enum Folha: String, Identifiable {
-        case nome, tema, catGasto, catReceita, carteiras, moeda, toqueDuplo, maquininha, pix
+        case nome, tema, catGasto, catReceita, carteiras, moeda, toqueDuplo, maquininha, pix, fixas
         var id: String { rawValue }
     }
 
@@ -93,6 +93,7 @@ struct ConfigView: View {
             case .toqueDuplo: GuiaView(guia: .toqueDuplo)
             case .maquininha: GuiaView(guia: .maquininha)
             case .pix: GuiaView(guia: .pix)
+            case .fixas: ReceitasFixasSheet()
             }
         }
         .sheet(item: $exportar) { a in Compartilhar(itens: [a.url]) }
@@ -135,6 +136,8 @@ struct ConfigView: View {
                                 valor: "\(categorias.filter { $0.tipo == .receita }.count) ativas") { folha = .catReceita }
                     Divisor()
                     LinhaConfig(titulo: "Carteiras", valor: "\(carteiras.count) ativas") { folha = .carteiras }
+                    Divisor()
+                    LinhaConfig(titulo: "Receitas fixas (salário)") { folha = .fixas }
                     Divisor()
                     LinhaConfig(titulo: "Moeda padrão", valor: "\(moeda) · \(Moeda.atual.simbolo)") { folha = .moeda }
                 }

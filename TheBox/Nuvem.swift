@@ -18,6 +18,25 @@ struct BackupDados: Codable {
     var carteiras: [Cart]
     var limites: [L]
     var preferencias: [String: String]
+    var recorrencias: [R]? = nil
+    var caixinhas: [Cx]? = nil
+
+    struct R: Codable {
+        var nome: String
+        var valor: Double
+        var dia: Int
+        var categoria: String
+        var carteira: String
+        var ultimoMes: Int
+        var ativa: Bool
+    }
+    struct Cx: Codable {
+        var nome: String
+        var meta: Double
+        var saldoInicial: Double
+        var prazo: Double?
+        var ordem: Int
+    }
 
     struct T: Codable {
         var tipo: String
@@ -26,6 +45,7 @@ struct BackupDados: Codable {
         var carteira: String
         var descricao: String
         var data: Double
+        var entrada: Bool? = nil
     }
     struct C: Codable {
         var nome: String
@@ -99,7 +119,7 @@ enum Backup {
         return BackupDados(
             transacoes: ts.sorted { $0.data < $1.data }.map {
                 .init(tipo: $0.tipoRaw, valor: $0.valor, categoria: $0.categoria, carteira: $0.carteira,
-                      descricao: $0.descricao, data: $0.data.timeIntervalSince1970)
+                      descricao: $0.descricao, data: $0.data.timeIntervalSince1970, entrada: $0.entrada)
             },
             contas: cs.sorted { $0.nome < $1.nome }.map {
                 .init(nome: $0.nome, valor: $0.valor, dia: $0.dia, venceMesSeguinte: $0.venceMesSeguinte,
@@ -116,7 +136,15 @@ enum Backup {
                       diaFechamento: $0.diaFechamento, ordem: $0.ordem, faturasPagas: $0.faturasPagas)
             },
             limites: ls.sorted { $0.mes < $1.mes }.map { .init(mes: $0.mes, valor: $0.valor) },
-            preferencias: prefs
+            preferencias: prefs,
+            recorrencias: ((try? ctx.fetch(FetchDescriptor<Recorrencia>())) ?? []).map {
+                .init(nome: $0.nome, valor: $0.valor, dia: $0.dia, categoria: $0.categoria, carteira: $0.carteira,
+                      ultimoMes: $0.ultimoMes, ativa: $0.ativa)
+            },
+            caixinhas: ((try? ctx.fetch(FetchDescriptor<Caixinha>())) ?? []).map {
+                .init(nome: $0.nome, meta: $0.meta, saldoInicial: $0.saldoInicial,
+                      prazo: $0.prazo?.timeIntervalSince1970, ordem: $0.ordem)
+            }
         )
     }
 
@@ -127,10 +155,12 @@ enum Backup {
         try? ctx.delete(model: Categoria.self)
         try? ctx.delete(model: Carteira.self)
         try? ctx.delete(model: LimiteMensal.self)
+        try? ctx.delete(model: Recorrencia.self)
+        try? ctx.delete(model: Caixinha.self)
         for t in b.transacoes {
             ctx.insert(Transacao(tipo: TipoTransacao(rawValue: t.tipo) ?? .gasto, valor: t.valor, categoria: t.categoria,
                                  carteira: t.carteira, descricao: t.descricao,
-                                 data: Date(timeIntervalSince1970: t.data)))
+                                 data: Date(timeIntervalSince1970: t.data), entrada: t.entrada ?? false))
         }
         for c in b.contas {
             let nova = Conta(nome: c.nome, valor: c.valor, dia: c.dia, venceMesSeguinte: c.venceMesSeguinte,
@@ -154,6 +184,16 @@ enum Backup {
             ctx.insert(nova)
         }
         for l in b.limites { ctx.insert(LimiteMensal(mes: l.mes, valor: l.valor)) }
+        for r in b.recorrencias ?? [] {
+            let nova = Recorrencia(nome: r.nome, valor: r.valor, dia: r.dia, categoria: r.categoria,
+                                   carteira: r.carteira, ultimoMes: r.ultimoMes)
+            nova.ativa = r.ativa
+            ctx.insert(nova)
+        }
+        for c in b.caixinhas ?? [] {
+            ctx.insert(Caixinha(nome: c.nome, meta: c.meta, saldoInicial: c.saldoInicial,
+                                prazo: c.prazo.map { Date(timeIntervalSince1970: $0) }, ordem: c.ordem))
+        }
         try? ctx.save()
         let d = UserDefaults.standard
         for (k, v) in b.preferencias {

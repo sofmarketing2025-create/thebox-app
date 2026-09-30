@@ -17,6 +17,7 @@ struct EventoDia: Identifiable {
 struct CalendarioView: View {
     @Environment(\.dismiss) private var dismiss
     @Query private var contas: [Conta]
+    @Query private var recorrencias: [Recorrencia]
     @Query private var transacoes: [Transacao]
     @Query(sort: \Carteira.ordem) private var carteiras: [Carteira]
     @State private var mes: Int
@@ -45,6 +46,10 @@ struct CalendarioView: View {
                 r.append(EventoDia(dia: cal.component(.day, from: Mes.data(mes, dia: c.diaVencimento)),
                                    nome: "Fatura \(c.nome)", valor: v, tipo: .fatura, pago: c.faturaPaga(em: mes)))
             }
+        }
+        for rec in recorrencias where rec.ativa && mes > rec.ultimoMes {
+            r.append(EventoDia(dia: cal.component(.day, from: Mes.data(mes, dia: rec.dia)),
+                               nome: "\(rec.nome) (previsto)", valor: rec.valor, tipo: .receita, pago: false))
         }
         for t in fin.transacoes(em: mes) where t.tipo == .receita {
             r.append(EventoDia(dia: cal.component(.day, from: t.data), nome: t.titulo, valor: t.valor,

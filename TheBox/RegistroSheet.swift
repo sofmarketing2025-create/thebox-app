@@ -9,6 +9,7 @@ struct RegistroSheet: View {
     @Query(sort: \Carteira.ordem) private var carteiras: [Carteira]
     @Query private var transacoes: [Transacao]
     @Query private var contas: [Conta]
+    @Query(sort: \Caixinha.ordem) private var caixinhas: [Caixinha]
 
     let editando: Transacao?
     @State private var tipo: TipoTransacao
@@ -19,6 +20,8 @@ struct RegistroSheet: View {
     @State private var data: Date
     @State private var mostrarData = false
     @State private var confirmarExclusao = false
+    @State private var entrada: Bool
+    @State private var repetirReceita = false
     @FocusState private var focoValor: Bool
     @FocusState private var focoDescricao: Bool
 
@@ -30,10 +33,17 @@ struct RegistroSheet: View {
         _carteira = State(initialValue: editando?.carteira)
         _descricao = State(initialValue: editando?.descricao ?? "")
         _data = State(initialValue: editando?.data ?? .now)
+        _entrada = State(initialValue: editando?.entrada ?? false)
     }
 
     private var valor: Double { Double(Int(digitos) ?? 0) / 100 }
     private var cats: [Categoria] { categorias.filter { $0.tipo == tipo } }
+    /// Destinos de uma transferência: caixinhas, outra conta sua e (se saiu) pagamento de fatura
+    private var destinos: [String] {
+        caixinhas.map { Transacao.prefixoCaixinha + $0.nome } + [Transacao.outraConta]
+            + (entrada ? [] : [Transacao.pagamentoFatura])
+    }
+    private var opcoesAtuais: [String] { tipo == .transferencia ? destinos : cats.map(\.nome) }
     private var valido: Bool { valor > 0 && categoria != nil }
 
     var body: some View {
@@ -48,10 +58,20 @@ struct RegistroSheet: View {
                     }
                     SeletorTipo(tipo: $tipo)
                     campoValor
-                    gradeCategorias
+                    if tipo == .transferencia {
+                        gradeDestinos
+                    } else {
+                        gradeCategorias
+                    }
                     if tipo == .gasto { impacto }
-                    pagamentos
-                    TextField(tipo == .gasto ? "Onde foi? (opcional)" : "De onde veio? (opcional)", text: $descricao)
+                    if tipo != .transferencia { pagamentos }
+                    if tipo == .receita && editando == nil {
+                        LinhaToggle(titulo: "Repete todo mês",
+                                    sub: "Ex.: salário. Entra sozinha todo dia \(Calendar.current.component(.day, from: data)) nos próximos meses",
+                                    ligado: $repetirReceita)
+                    }
+                    TextField(tipo == .gasto ? "Onde foi? (opcional)" : (tipo == .receita ? "De onde veio? (opcional)" : "Descrição (opcional)"),
+                              text: $descricao)
                         .focused($focoDescricao)
                         .submitLabel(.done)
                         .campo()
@@ -81,7 +101,10 @@ struct RegistroSheet: View {
         }
         .folha()
         .onChange(of: tipo) { _, _ in
-            if !cats.contains(where: { $0.nome == categoria }) { categoria = nil }
+            if !opcoesAtuais.contains(where: { $0 == categoria }) { categoria = nil }
+        }
+        .onChange(of: entrada) { _, _ in
+            if !opcoesAtuais.contains(where: { $0 == categoria }) { categoria = nil }
         }
         .onChange(of: digitos) { _, novo in
             let limpo = String(novo.filter(\.isNumber).prefix(9))
@@ -160,6 +183,34 @@ struct RegistroSheet: View {
         }
     }
 
+    private var gradeDestinos: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Picker("Sentido", selection: $entrada) {
+                Text("Saiu da conta").tag(false)
+                Text("Entrou na conta").tag(true)
+            }
+            .pickerStyle(.segmented)
+            Text(entrada ? "De onde veio?" : "Pra onde foi?")
+                .font(.subheadline.weight(.medium))
+                .foregroundStyle(.secondary)
+            LazyVGrid(columns: [GridItem(.flexible(), spacing: 12), GridItem(.flexible(), spacing: 12)], spacing: 12) {
+                ForEach(destinos, id: \.self) { d in
+                    ChipOpcao(texto: d.hasPrefix(Transacao.prefixoCaixinha) ? String(d.dropFirst(Transacao.prefixoCaixinha.count)) : d,
+                              icone: d.hasPrefix(Transacao.prefixoCaixinha) ? "shippingbox.fill"
+                                : (d == Transacao.outraConta ? "building.columns" : "creditcard"),
+                              selecionado: categoria == d) {
+                        categoria = d
+                        focoValor = false
+                    }
+                }
+            }
+            Text(caixinhas.isEmpty
+                 ? "Transferência não é gasto nem receita: só mexe no saldo da conta. Crie caixinhas na aba Quitar."
+                 : "Transferência não é gasto nem receita: só mexe no saldo da conta.")
+                .font(.system(size: 12)).foregroundStyle(.secondary)
+        }
+    }
+
     @ViewBuilder
     private var impacto: some View {
         if let nome = categoria, let cat = cats.first(where: { $0.nome == nome }), cat.limite > 0, valor > 0 {
@@ -211,9 +262,16 @@ struct RegistroSheet: View {
             t.carteira = cart
             t.descricao = desc
             t.data = data
+            t.entrada = tipo == .transferencia ? entrada : false
             try? ctx.save()
         } else {
-            ctx.insert(Transacao(tipo: tipo, valor: valor, categoria: categoria, carteira: cart, descricao: desc, data: data))
+            ctx.insert(Transacao(tipo: tipo, valor: valor, categoria: categoria, carteira: tipo == .transferencia ? "" : cart,
+                                 descricao: desc, data: data, entrada: tipo == .transferencia ? entrada : false))
+            if tipo == .receita && repetirReceita {
+                ctx.insert(Recorrencia(nome: desc.isEmpty ? categoria : desc, valor: valor,
+                                       dia: Calendar.current.component(.day, from: data),
+                                       categoria: categoria, carteira: cart, ultimoMes: Mes.indice(data)))
+            }
             try? ctx.save()
             Notificacoes.registrado(valor: valor, titulo: desc.isEmpty ? tipo.nome : desc, categoria: categoria)
             if tipo == .gasto {
@@ -236,6 +294,7 @@ struct SeletorTipo: View {
                 } label: {
                     Text(t.nome)
                         .font(.system(size: 15, weight: .semibold))
+                        .lineLimit(1).minimumScaleFactor(0.75)
                         .foregroundStyle(tipo == t ? Color.sobreDestaque : Color.secondary)
                         .frame(maxWidth: .infinity)
                         .frame(height: 50)

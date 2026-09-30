@@ -2,9 +2,15 @@ import Foundation
 import SwiftData
 
 enum TipoTransacao: String, Codable, CaseIterable, Identifiable {
-    case gasto, receita
+    case gasto, receita, transferencia
     var id: String { rawValue }
-    var nome: String { self == .gasto ? "Gasto" : "Receita" }
+    var nome: String {
+        switch self {
+        case .gasto: return "Gasto"
+        case .receita: return "Receita"
+        case .transferencia: return "Transferência"
+        }
+    }
 }
 
 enum TipoCarteira: String, Codable, CaseIterable, Identifiable {
@@ -115,14 +121,18 @@ final class Transacao {
     var carteira: String = ""
     var descricao: String = ""
     var data: Date = Date.now
+    /// Só pra transferência: true = entrou na conta (resgate, veio de outra conta sua); false = saiu
+    var entrada: Bool = false
 
-    init(tipo: TipoTransacao, valor: Double, categoria: String, carteira: String, descricao: String, data: Date = .now) {
+    init(tipo: TipoTransacao, valor: Double, categoria: String, carteira: String, descricao: String,
+         data: Date = .now, entrada: Bool = false) {
         self.tipoRaw = tipo.rawValue
         self.valor = valor
         self.categoria = categoria
         self.carteira = carteira
         self.descricao = descricao
         self.data = data
+        self.entrada = entrada
     }
 
     var tipo: TipoTransacao { TipoTransacao(rawValue: tipoRaw) ?? .gasto }
@@ -133,9 +143,29 @@ final class Transacao {
     /// Ajuste pra o saldo do app bater com o do banco (não conta como gasto nem receita de verdade)
     var ehAjuste: Bool { categoria == Transacao.categoriaAjuste }
 
+    static let prefixoCaixinha = "Caixinha: "
+    static let outraConta = "Outra conta minha"
+    static let pagamentoFatura = "Pagamento de fatura"
+
+    /// Nome da caixinha, se for uma transferência pra/de caixinha
+    var nomeCaixinha: String? {
+        guard tipo == .transferencia, categoria.hasPrefix(Transacao.prefixoCaixinha) else { return nil }
+        return String(categoria.dropFirst(Transacao.prefixoCaixinha.count))
+    }
+
+    /// Efeito no saldo da conta: + entra, - sai
+    var efeitoNoSaldo: Double {
+        switch tipo {
+        case .gasto: return -valor
+        case .receita: return valor
+        case .transferencia: return entrada ? valor : -valor
+        }
+    }
+
     /// Cópia solta (ainda não salva), usada pra desfazer uma exclusão
     func copia() -> Transacao {
-        Transacao(tipo: tipo, valor: valor, categoria: categoria, carteira: carteira, descricao: descricao, data: data)
+        Transacao(tipo: tipo, valor: valor, categoria: categoria, carteira: carteira, descricao: descricao,
+                  data: data, entrada: entrada)
     }
 }
 
@@ -261,6 +291,7 @@ struct Financas {
     var contas: [Conta] = []
     var carteiras: [Carteira] = []
     var limites: [LimiteMensal] = []
+    var recorrencias: [Recorrencia] = []
 
     func credito(_ nome: String) -> Bool {
         carteiras.first { $0.nome == nome }?.tipo == .credito
@@ -322,9 +353,20 @@ struct Financas {
         cartoes().filter { $0.faturaPaga(em: m) }.reduce(0) { $0 + fatura($1, em: m) }
     }
 
+    /// Transferências do mês (caixinha, outra conta sua, pagamento de fatura): + entrou, - saiu
+    func transferenciasLiquidas(em m: Int) -> Double {
+        transacoes(em: m).filter { $0.tipo == .transferencia }.reduce(0) { $0 + $1.efeitoNoSaldo }
+    }
+
+    /// Receitas fixas (ex.: salário) que ainda vão entrar nesse mês
+    func receitasAReceber(em m: Int) -> Double {
+        recorrencias.filter { $0.ativa && m > $0.ultimoMes }.reduce(0) { $0 + $1.valor }
+    }
+
     /// Saldo de hoje: só o que já entrou e já foi pago
     func saldo(em m: Int) -> Double {
         receitas(em: m) - gastosAvulsos(em: m) - contasPagasFora(em: m) - faturasPagas(em: m)
+            + transferenciasLiquidas(em: m)
     }
 
     /// Contas do mês que ainda não foram marcadas como pagas
@@ -338,7 +380,14 @@ struct Financas {
 
     /// Quanto sobra no fim do mês depois de pagar todas as contas e faturas
     func saldoPrevisto(em m: Int) -> Double {
-        saldo(em: m) - contasAPagar(em: m) - faturasAPagar(em: m)
+        saldo(em: m) + receitasAReceber(em: m) - contasAPagar(em: m) - faturasAPagar(em: m)
+    }
+
+    /// Quanto tem guardado numa caixinha (o que já tinha + guardados - resgates)
+    func saldoCaixinha(_ c: Caixinha) -> Double {
+        let chave = Transacao.prefixoCaixinha + c.nome
+        return c.saldoInicial + transacoes.filter { $0.tipo == .transferencia && $0.categoria == chave }
+            .reduce(0) { $0 + ($1.entrada ? -$1.valor : $1.valor) }
     }
 
     /// Gastos do mês por categoria (transações + contas pagas)
@@ -358,5 +407,48 @@ struct Financas {
 
     func temDados(em m: Int) -> Bool {
         !transacoes(em: m).isEmpty || !contasPagas(em: m).isEmpty
+    }
+}
+
+/// Receita que se repete todo mês (ex.: salário): entra sozinha no dia
+@Model
+final class Recorrencia {
+    var chave: UUID = UUID()
+    var nome: String = ""
+    var valor: Double = 0
+    var dia: Int = 5
+    var categoria: String = ""
+    var carteira: String = ""
+    /// Último mês (ver Mes.indice) em que a receita já foi lançada
+    var ultimoMes: Int = 0
+    var ativa: Bool = true
+
+    init(nome: String, valor: Double, dia: Int, categoria: String, carteira: String, ultimoMes: Int) {
+        self.nome = nome
+        self.valor = valor
+        self.dia = dia
+        self.categoria = categoria
+        self.carteira = carteira
+        self.ultimoMes = ultimoMes
+    }
+}
+
+/// Dinheiro guardado com um objetivo (reserva, quitar dívida, viagem)
+@Model
+final class Caixinha {
+    var chave: UUID = UUID()
+    var nome: String = ""
+    var meta: Double = 0
+    /// O que já estava guardado quando a caixinha foi criada
+    var saldoInicial: Double = 0
+    var prazo: Date? = nil
+    var ordem: Int = 0
+
+    init(nome: String, meta: Double, saldoInicial: Double, prazo: Date?, ordem: Int) {
+        self.nome = nome
+        self.meta = meta
+        self.saldoInicial = saldoInicial
+        self.prazo = prazo
+        self.ordem = ordem
     }
 }

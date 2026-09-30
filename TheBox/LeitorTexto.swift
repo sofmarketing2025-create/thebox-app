@@ -33,8 +33,17 @@ enum LeitorTexto {
             Notificacoes.agora("Já estava registrado", "\(r.valor.moeda) desse horário já está no app.")
             return
         }
-        let cat = categoria(r, ctx: ctx)
         let cart = carteira(r, ctx: ctx)
+        if ehPropriaConta(r.nome) {
+            // Pix entre contas suas não é gasto nem receita
+            ctx.insert(Transacao(tipo: .transferencia, valor: r.valor, categoria: Transacao.outraConta, carteira: cart,
+                                 descricao: r.nome, data: quando, entrada: r.tipo == .receita))
+            try ctx.save()
+            Notificacoes.agora("\(r.valor.moeda) transferido", "Entre contas suas: não conta como gasto.")
+            Notificacoes.reagendar(ctx)
+            return
+        }
+        let cat = categoria(r, ctx: ctx)
         ctx.insert(Transacao(tipo: r.tipo, valor: r.valor, categoria: cat, carteira: cart, descricao: r.nome, data: quando))
         try ctx.save()
         Notificacoes.registrado(valor: r.valor, titulo: r.nome.isEmpty ? r.tipo.nome : r.nome, categoria: cat)
@@ -42,6 +51,16 @@ enum LeitorTexto {
             Notificacoes.verificarLimite(categoria: cat, valor: r.valor, data: .now, ctx: ctx)
         }
         Notificacoes.reagendar(ctx)
+    }
+
+    /// O nome é o seu (Pix pra outra conta sua)? Ignora quando começa com número (CNPJ, ex.: seu MEI pagando salário)
+    static func ehPropriaConta(_ nome: String) -> Bool {
+        let meu = Categorizador.normalizar(UserDefaults.standard.string(forKey: "nomeUsuario") ?? "")
+            .split(separator: " ").map(String.init)
+        guard let primeiro = meu.first, meu.count >= 2, let ultimo = meu.last else { return false }
+        let n = Categorizador.normalizar(nome)
+        guard let c = n.first, !c.isNumber else { return false }
+        return n.contains(primeiro) && n.contains(ultimo)
     }
 
     static func ler(_ bruto: String) -> Resultado? {

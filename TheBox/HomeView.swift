@@ -10,6 +10,7 @@ struct HomeView: View {
     @Query(sort: \Carteira.ordem) private var carteiras: [Carteira]
     @Query(sort: \Categoria.ordem) private var categorias: [Categoria]
     @Query private var limites: [LimiteMensal]
+    @Query private var recorrencias: [Recorrencia]
     @AppStorage("nomeUsuario") private var nome = ""
     @AppStorage("ocultarSaldo") private var ocultar = false
     @State private var detalhes = false
@@ -23,7 +24,8 @@ struct HomeView: View {
     }
 
     var body: some View {
-        let fin = Financas(transacoes: transacoes, contas: contas, carteiras: carteiras, limites: limites)
+        let fin = Financas(transacoes: transacoes, contas: contas, carteiras: carteiras, limites: limites,
+                           recorrencias: recorrencias)
         let doMes = fin.transacoes(em: mes)
         let limite = fin.limite(em: mes)
         let gasto = fin.gastoTotal(em: mes)
@@ -121,7 +123,7 @@ struct CartaoHoje: View {
         let gastoHoje = fin.transacoes(em: mes).filter { $0.tipo == .gasto && !$0.ehAjuste && cal.isDateInToday($0.data) }
             .reduce(0) { $0 + $1.valor }
         let limite = fin.limite(em: mes)
-        let temRenda = fin.receitas(em: mes) > 0
+        let temRenda = fin.receitas(em: mes) + fin.receitasAReceber(em: mes) > 0
         let porLimite = limite - fin.gastoTotal(em: mes) - fin.contasAPagar(em: mes)
         let previsto = fin.saldoPrevisto(em: mes)
         // o que ainda dá pra gastar até o fim do mês (somando de volta o que já saiu hoje)
@@ -282,9 +284,9 @@ struct LinhaTransacao: View {
             }
             Spacer(minLength: 8)
             VStack(alignment: .trailing, spacing: 5) {
-                Text((transacao.tipo == .gasto ? "-" : "+") + transacao.valor.moeda)
+                Text((transacao.efeitoNoSaldo < 0 ? "-" : "+") + transacao.valor.moeda)
                     .font(.system(size: 15, weight: .semibold))
-                    .foregroundStyle(transacao.tipo == .gasto ? Color.primary : Color.green)
+                    .foregroundStyle(transacao.tipo == .receita ? Color.green : (transacao.tipo == .transferencia ? Color.secondary : Color.primary))
                 Text(transacao.data.formatted(.dateTime.day().month(.abbreviated).locale(ptBR)) + " · " + transacao.data.formatted(.dateTime.hour(.twoDigits(amPM: .omitted)).minute(.twoDigits).locale(ptBR)))
                     .font(.system(size: 14))
                     .foregroundStyle(.secondary)
@@ -301,6 +303,7 @@ struct LinhaTransacao: View {
 struct DetalhesSaldoView: View {
     let mes: Int
     @Environment(\.modelContext) private var ctx
+    @Query private var recorrencias: [Recorrencia]
     @Environment(\.dismiss) private var dismiss
     @State private var ajustando = false
     @Query private var transacoes: [Transacao]
@@ -308,7 +311,7 @@ struct DetalhesSaldoView: View {
     @Query(sort: \Carteira.ordem) private var carteiras: [Carteira]
 
     var body: some View {
-        let fin = Financas(transacoes: transacoes, contas: contas, carteiras: carteiras)
+        let fin = Financas(transacoes: transacoes, contas: contas, carteiras: carteiras, recorrencias: recorrencias)
         let porCarteira = Dictionary(grouping: fin.transacoes(em: mes).filter { $0.tipo == .gasto && !$0.ehAjuste }, by: \.carteira)
             .map { ItemValor(nome: $0.key, valor: $0.value.reduce(0) { $0 + $1.valor }) }
             .sorted { $0.valor > $1.valor }
@@ -335,6 +338,15 @@ struct DetalhesSaldoView: View {
                     Divider().overlay(Color.borda)
                     LinhaStat(titulo: "Gastos", valor: "-" + (fin.gastosAvulsos(em: mes) - ajusteSaida).moeda)
                     Divider().overlay(Color.borda)
+                    if fin.transferenciasLiquidas(em: mes) != 0 {
+                        let tr = fin.transferenciasLiquidas(em: mes)
+                        LinhaStat(titulo: "Transferências e caixinhas", valor: (tr >= 0 ? "+" : "-") + abs(tr).moeda)
+                        Divider().overlay(Color.borda)
+                    }
+                    if fin.receitasAReceber(em: mes) > 0 {
+                        LinhaStat(titulo: "Receitas fixas a receber", valor: "+" + fin.receitasAReceber(em: mes).moeda)
+                        Divider().overlay(Color.borda)
+                    }
                     if !ajustes.isEmpty {
                         let liquido = ajusteEntrada - ajusteSaida
                         LinhaStat(titulo: "Ajuste de saldo", valor: (liquido >= 0 ? "+" : "-") + abs(liquido).moeda)
@@ -442,9 +454,9 @@ struct TodasTransacoesView: View {
                                     Text("\(t.data.formatted(.dateTime.hour(.twoDigits(amPM: .omitted)).minute(.twoDigits).locale(ptBR))) · \(t.categoria) · \(t.carteira)").font(.footnote).foregroundStyle(.secondary)
                                 }
                                 Spacer()
-                                Text((t.tipo == .gasto ? "-" : "+") + t.valor.moeda)
+                                Text((t.efeitoNoSaldo < 0 ? "-" : "+") + t.valor.moeda)
                                     .fontWeight(.semibold)
-                                    .foregroundStyle(t.tipo == .gasto ? Color.primary : Color.green)
+                                    .foregroundStyle(t.tipo == .receita ? Color.green : (t.tipo == .transferencia ? Color.secondary : Color.primary))
                             }
                             .contentShape(Rectangle())
                             .onTapGesture { editando = t }

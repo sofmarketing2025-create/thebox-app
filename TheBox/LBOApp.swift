@@ -148,6 +148,7 @@ struct UsuarioView: View {
                await UNUserNotificationCenter.current().notificationSettings().authorizationStatus == .notDetermined {
                 _ = await Notificacoes.pedirPermissao()
             }
+            Recorrencias.gerar(ctx)
             Notificacoes.reagendar(ctx)
             if estado.bloqueado && faceID { desbloquear() }
             // iPhone novo (sem nada salvo): traz os dados do backup na nuvem
@@ -169,6 +170,7 @@ struct UsuarioView: View {
                 Task { await Backup.enviar(ctx) }
             case .active:
                 if estado.bloqueado && faceID { desbloquear() }
+                Recorrencias.gerar(ctx)
             default:
                 break
             }
