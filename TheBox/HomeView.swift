@@ -61,7 +61,7 @@ struct HomeView: View {
                     let lista = diaFiltro.map { d in doMes.filter { Calendar.current.isDate($0.data, inSameDayAs: d) } } ?? doMes
                     FiltroDias(dias: dias, transacoes: doMes, selecionado: $diaFiltro)
                     if let d = diaFiltro {
-                        let gastosDia = lista.filter { $0.tipo == .gasto }.reduce(0) { $0 + $1.valor }
+                        let gastosDia = lista.filter { $0.tipo == .gasto && !$0.ehAjuste }.reduce(0) { $0 + $1.valor }
                         let receitasDia = lista.filter { $0.tipo == .receita }.reduce(0) { $0 + $1.valor }
                         HStack {
                             Text(d.formatted(.dateTime.weekday(.wide).day().month(.wide).locale(ptBR)))
@@ -118,7 +118,7 @@ struct CartaoHoje: View {
         let agora = Date.now
         let diasNoMes = cal.range(of: .day, in: .month, for: agora)?.count ?? 30
         let dias = max(1, diasNoMes - cal.component(.day, from: agora) + 1)
-        let gastoHoje = fin.transacoes(em: mes).filter { $0.tipo == .gasto && cal.isDateInToday($0.data) }
+        let gastoHoje = fin.transacoes(em: mes).filter { $0.tipo == .gasto && !$0.ehAjuste && cal.isDateInToday($0.data) }
             .reduce(0) { $0 + $1.valor }
         let limite = fin.limite(em: mes)
         let temRenda = fin.receitas(em: mes) > 0
@@ -172,7 +172,7 @@ struct FiltroDias: View {
     @Binding var selecionado: Date?
 
     private func gasto(_ d: Date) -> Double {
-        transacoes.filter { $0.tipo == .gasto && Calendar.current.isDate($0.data, inSameDayAs: d) }
+        transacoes.filter { $0.tipo == .gasto && !$0.ehAjuste && Calendar.current.isDate($0.data, inSameDayAs: d) }
             .reduce(0) { $0 + $1.valor }
     }
 
@@ -309,7 +309,7 @@ struct DetalhesSaldoView: View {
 
     var body: some View {
         let fin = Financas(transacoes: transacoes, contas: contas, carteiras: carteiras)
-        let porCarteira = Dictionary(grouping: fin.transacoes(em: mes).filter { $0.tipo == .gasto }, by: \.carteira)
+        let porCarteira = Dictionary(grouping: fin.transacoes(em: mes).filter { $0.tipo == .gasto && !$0.ehAjuste }, by: \.carteira)
             .map { ItemValor(nome: $0.key, valor: $0.value.reduce(0) { $0 + $1.valor }) }
             .sorted { $0.valor > $1.valor }
 
@@ -328,10 +328,18 @@ struct DetalhesSaldoView: View {
                         .font(.footnote).foregroundStyle(.secondary)
                 }
                 VStack(spacing: 0) {
-                    LinhaStat(titulo: "Receitas", valor: fin.receitas(em: mes).moeda)
+                    let ajustes = fin.transacoes(em: mes).filter(\.ehAjuste)
+                    let ajusteEntrada = ajustes.filter { $0.tipo == .receita }.reduce(0) { $0 + $1.valor }
+                    let ajusteSaida = ajustes.filter { $0.tipo == .gasto }.reduce(0) { $0 + $1.valor }
+                    LinhaStat(titulo: "Receitas", valor: (fin.receitas(em: mes) - ajusteEntrada).moeda)
                     Divider().overlay(Color.borda)
-                    LinhaStat(titulo: "Gastos", valor: "-" + fin.gastosAvulsos(em: mes).moeda)
+                    LinhaStat(titulo: "Gastos", valor: "-" + (fin.gastosAvulsos(em: mes) - ajusteSaida).moeda)
                     Divider().overlay(Color.borda)
+                    if !ajustes.isEmpty {
+                        let liquido = ajusteEntrada - ajusteSaida
+                        LinhaStat(titulo: "Ajuste de saldo", valor: (liquido >= 0 ? "+" : "-") + abs(liquido).moeda)
+                        Divider().overlay(Color.borda)
+                    }
                     LinhaStat(titulo: "Contas pagas", valor: "-" + fin.contasPagasFora(em: mes).moeda)
                     Divider().overlay(Color.borda)
                     LinhaStat(titulo: "Faturas pagas", valor: "-" + fin.faturasPagas(em: mes).moeda)
