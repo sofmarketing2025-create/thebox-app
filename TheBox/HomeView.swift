@@ -124,14 +124,11 @@ struct CartaoHoje: View {
         let porLimite = limite - fin.gastoTotal(em: mes) - fin.contasAPagar(em: mes)
         let previsto = fin.saldoPrevisto(em: mes)
         // o que ainda dá pra gastar até o fim do mês (somando de volta o que já saiu hoje)
-        let disponivel: Double = {
-            if limite > 0 && temRenda { return min(porLimite, previsto) }
-            if limite > 0 { return porLimite }
-            return previsto
-        }() + gastoHoje
+        // sem receita no mês o app não sabe quanto dinheiro existe: o limite sozinho não é dinheiro
+        let disponivel: Double = (limite > 0 ? min(porLimite, previsto) : previsto) + gastoHoje
         let porDia = max(0, disponivel) / Double(dias)
         let restaHoje = porDia - gastoHoje
-        let semBase = limite == 0 && !temRenda
+        let semBase = !temRenda
 
         VStack(alignment: .leading, spacing: 8) {
             HStack(alignment: .firstTextBaseline) {
@@ -144,7 +141,7 @@ struct CartaoHoje: View {
                 }
             }
             if semBase {
-                Text("Cadastre sua renda (Receita) ou um limite do mês na Análise pra calcular.")
+                Text("Nenhuma entrada registrada em \(Mes.nome(mes).lowercased()). Registre como Receita o salário ou o saldo que você já tinha na conta no começo do mês pra calcular.")
                     .font(.system(size: 13)).foregroundStyle(.secondary)
             } else if disponivel <= 0 {
                 Text("O mês já fechou no vermelho: evite qualquer gasto que não seja essencial.")
