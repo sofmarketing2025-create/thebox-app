@@ -9,7 +9,7 @@ import Supabase
 final class Sessao {
     var uid: String? = UserDefaults.standard.string(forKey: "uidAtual")
 
-    let client = SupabaseClient(supabaseURL: Configuracao.supabaseURL, supabaseKey: Configuracao.supabaseChave)
+    let client = Nuvem.client
 
     func entrar(email: String, senha: String) async throws {
         let s = try await client.auth.signIn(email: email, password: senha)
@@ -83,6 +83,15 @@ final class Sessao {
             return "Sem conexão com a internet."
         }
         if t.contains("excluir_conta") { return "Exclusão de conta ainda não configurada no servidor." }
+        if t.contains("backups") && (t.contains("does not exist") || t.contains("42p01") || t.contains("schema cache")) {
+            return "O backup ainda não foi configurado no servidor (falta rodar o SQL do backup)."
+        }
+        if t.contains("row-level security") || t.contains("42501") || t.contains("permission denied") {
+            return "Sem permissão no servidor. Confira o SQL do backup."
+        }
+        if t.contains("jwt") || t.contains("not authenticated") || t.contains("session") {
+            return "Sua sessão expirou. Saia e entre de novo na conta."
+        }
         return "Algo deu errado. Tente de novo."
     }
 

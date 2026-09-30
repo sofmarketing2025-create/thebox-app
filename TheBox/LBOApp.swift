@@ -150,12 +150,23 @@ struct UsuarioView: View {
             }
             Notificacoes.reagendar(ctx)
             if estado.bloqueado && faceID { desbloquear() }
+            // iPhone novo (sem nada salvo): traz os dados do backup na nuvem
+            if !Backup.temDadosLocais(ctx), let linha = try? await Backup.baixar(),
+               !linha.dados.transacoes.isEmpty || !linha.dados.contas.isEmpty {
+                Backup.aplicar(linha.dados, ctx: ctx)
+                UserDefaults.standard.set(true, forKey: "tourFeito")
+                withAnimation { onboardingFeito = true }
+                Notificacoes.agora("Seus dados voltaram", "Recuperamos o backup da sua conta.")
+            } else {
+                await Backup.enviar(ctx)
+            }
         }
         .onChange(of: fase) { _, nova in
             switch nova {
             case .background:
                 if faceID { estado.bloqueado = true }
                 Notificacoes.reagendar(ctx)
+                Task { await Backup.enviar(ctx) }
             case .active:
                 if estado.bloqueado && faceID { desbloquear() }
             default:

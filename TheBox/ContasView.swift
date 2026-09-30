@@ -12,6 +12,7 @@ struct ContasView: View {
     @State private var editando: Conta?
     @State private var criando = false
     @State private var pagando: Conta?
+    @State private var calendario = false
 
     var body: some View {
         let fin = Financas(transacoes: transacoes, contas: contas, carteiras: carteiras)
@@ -26,6 +27,7 @@ struct ContasView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 18) {
                 Cabecalho(sub: "Planejamento", titulo: "Contas") {
+                    BotaoCirculo(icone: "calendar") { calendario = true }
                     SeletorMes(mes: $mes)
                     BotaoCirculo(icone: "plus") { criando = true }
                 }
@@ -91,6 +93,7 @@ struct ContasView: View {
         }
         .background(Color.fundo)
         .sheet(isPresented: $criando) { FormContaView(conta: nil, mesInicial: mes) }
+        .sheet(isPresented: $calendario) { CalendarioView(mes: mes) }
         .sheet(item: $editando) { conta in FormContaView(conta: conta, mesInicial: mes) }
         .confirmationDialog("Como você pagou?",
                             isPresented: Binding(get: { pagando != nil }, set: { if !$0 { pagando = nil } }),

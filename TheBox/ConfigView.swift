@@ -157,6 +157,7 @@ struct ConfigView: View {
 
     @ViewBuilder
     private var secoesSistema: some View {
+        SecaoBackup()
                 Secao("Segurança") {
                     LinhaToggle(titulo: "Bloqueio com Face ID", ligado: $faceID)
                 }
@@ -268,6 +269,79 @@ struct DiasAvisoEditor: View {
         dias = Array(Set(novos)).sorted()
         Notificacoes.salvarDiasAviso(dias)
         mudou()
+    }
+}
+
+/// Backup na nuvem: último envio, "fazer agora" e "restaurar"
+struct SecaoBackup: View {
+    @Environment(\.modelContext) private var ctx
+    @State private var trabalhando = false
+    @State private var confirmar = false
+    @State private var aviso: String?
+    @State private var versao = 0
+
+    private var textoUltimo: String {
+        guard let d = Backup.ultimo else { return "Ainda não feito" }
+        return d.formatted(.dateTime.day().month(.abbreviated).hour().minute(.twoDigits).locale(ptBR))
+    }
+
+    var body: some View {
+        let _ = versao
+        let erro = UserDefaults.standard.string(forKey: "erroBackup")
+        Secao("Backup na nuvem") {
+            HStack {
+                VStack(alignment: .leading, spacing: 3) {
+                    Text("Último backup").font(.system(size: 15))
+                    Text(textoUltimo).font(.system(size: 12)).foregroundStyle(.secondary)
+                    if let erro {
+                        Text(erro).font(.system(size: 12)).foregroundStyle(.red)
+                    }
+                }
+                Spacer()
+                if trabalhando { ProgressView() }
+            }
+            .padding(.vertical, 12)
+            Divisor()
+            LinhaConfig(titulo: "Fazer backup agora", icone: "icloud.and.arrow.up") { fazer() }
+            Divisor()
+            LinhaConfig(titulo: "Restaurar do backup", icone: "icloud.and.arrow.down") { confirmar = true }
+        }
+        .confirmationDialog("Restaurar do backup?", isPresented: $confirmar, titleVisibility: .visible) {
+            Button("Restaurar", role: .destructive) { restaurar() }
+        } message: {
+            Text("Troca os dados deste iPhone pelos que estão salvos na nuvem.")
+        }
+        .alert(aviso ?? "", isPresented: Binding(get: { aviso != nil }, set: { if !$0 { aviso = nil } })) {
+            Button("OK") { aviso = nil }
+        }
+    }
+
+    private func fazer() {
+        trabalhando = true
+        Task {
+            let erro = await Backup.enviar(ctx, forcar: true)
+            trabalhando = false
+            versao += 1
+            aviso = erro ?? "Backup feito. Seus dados estão guardados na nuvem."
+        }
+    }
+
+    private func restaurar() {
+        trabalhando = true
+        Task {
+            do {
+                if let linha = try await Backup.baixar() {
+                    Backup.aplicar(linha.dados, ctx: ctx)
+                    aviso = "Pronto: \(linha.dados.transacoes.count) transações e \(linha.dados.contas.count) contas restauradas."
+                } else {
+                    aviso = "Nenhum backup encontrado nessa conta."
+                }
+            } catch {
+                aviso = Sessao.mensagem(error)
+            }
+            trabalhando = false
+            versao += 1
+        }
     }
 }
 

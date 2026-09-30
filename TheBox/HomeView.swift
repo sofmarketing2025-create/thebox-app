@@ -40,6 +40,10 @@ struct HomeView: View {
                             progresso: limite > 0 ? gasto / limite : 0,
                             ocultar: $ocultar) { detalhes = true }
 
+                if mes == Mes.indice() && !ocultar {
+                    CartaoHoje(fin: fin, mes: mes)
+                }
+
                 HStack(alignment: .firstTextBaseline) {
                     Text("Últimas transações").font(.system(size: 19, weight: .bold))
                     Spacer()
@@ -100,6 +104,66 @@ struct HomeView: View {
 
     private func iconeCarteira(_ nome: String) -> String {
         carteiras.first { $0.nome == nome }?.tipo.icone ?? "creditcard"
+    }
+}
+
+/// "Quanto posso gastar hoje": o que sobra pro dia a dia dividido pelos dias que faltam no mês
+struct CartaoHoje: View {
+    let fin: Financas
+    let mes: Int
+
+    var body: some View {
+        let cal = Calendar.current
+        let agora = Date.now
+        let diasNoMes = cal.range(of: .day, in: .month, for: agora)?.count ?? 30
+        let dias = max(1, diasNoMes - cal.component(.day, from: agora) + 1)
+        let gastoHoje = fin.transacoes(em: mes).filter { $0.tipo == .gasto && cal.isDateInToday($0.data) }
+            .reduce(0) { $0 + $1.valor }
+        let limite = fin.limite(em: mes)
+        let temRenda = fin.receitas(em: mes) > 0
+        let porLimite = limite - fin.gastoTotal(em: mes) - fin.contasAPagar(em: mes)
+        let previsto = fin.saldoPrevisto(em: mes)
+        // o que ainda dá pra gastar até o fim do mês (somando de volta o que já saiu hoje)
+        let disponivel: Double = {
+            if limite > 0 && temRenda { return min(porLimite, previsto) }
+            if limite > 0 { return porLimite }
+            return previsto
+        }() + gastoHoje
+        let porDia = max(0, disponivel) / Double(dias)
+        let restaHoje = porDia - gastoHoje
+        let semBase = limite == 0 && !temRenda
+
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(alignment: .firstTextBaseline) {
+                Text("PODE GASTAR HOJE").font(.system(size: 12, weight: .semibold)).tracking(1.5).foregroundStyle(.secondary)
+                Spacer()
+                if !semBase {
+                    Text(porDia.moeda)
+                        .font(.system(size: 22, weight: .heavy))
+                        .foregroundStyle(disponivel <= 0 ? Color.red : (restaHoje < 0 ? Color.orange : Color.green))
+                }
+            }
+            if semBase {
+                Text("Cadastre sua renda (Receita) ou um limite do mês na Análise pra calcular.")
+                    .font(.system(size: 13)).foregroundStyle(.secondary)
+            } else if disponivel <= 0 {
+                Text("O mês já fechou no vermelho: evite qualquer gasto que não seja essencial.")
+                    .font(.system(size: 13)).foregroundStyle(.red)
+            } else {
+                BarraProgresso(p: porDia > 0 ? gastoHoje / porDia : 0,
+                               cor: restaHoje < 0 ? .orange : .green, altura: 4)
+                HStack {
+                    Text("Gastou hoje \(gastoHoje.moeda)")
+                    Spacer()
+                    Text(restaHoje >= 0 ? "Resta \(restaHoje.moeda)" : "Passou \(abs(restaHoje).moeda)")
+                        .foregroundStyle(restaHoje >= 0 ? Color.secondary : Color.orange)
+                }
+                .font(.system(size: 13))
+                Text("\(max(0, disponivel).moeda) pra \(dias) \(dias == 1 ? "dia" : "dias") até o fim do mês")
+                    .font(.system(size: 12)).foregroundStyle(.secondary)
+            }
+        }
+        .cartao(18)
     }
 }
 

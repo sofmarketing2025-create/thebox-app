@@ -1,0 +1,198 @@
+import Foundation
+import SwiftData
+import CryptoKit
+import UIKit
+import Supabase
+
+/// Cliente único do Supabase (login e backup usam o mesmo)
+enum Nuvem {
+    static let client = SupabaseClient(supabaseURL: Configuracao.supabaseURL, supabaseKey: Configuracao.supabaseChave)
+}
+
+/// Cópia de tudo que o usuário tem no app, guardada na tabela "backups" do Supabase
+struct BackupDados: Codable {
+    var versao = 1
+    var transacoes: [T]
+    var contas: [C]
+    var categorias: [Cat]
+    var carteiras: [Cart]
+    var limites: [L]
+    var preferencias: [String: String]
+
+    struct T: Codable {
+        var tipo: String
+        var valor: Double
+        var categoria: String
+        var carteira: String
+        var descricao: String
+        var data: Double
+    }
+    struct C: Codable {
+        var nome: String
+        var valor: Double
+        var dia: Int
+        var venceMesSeguinte: Bool
+        var categoria: String
+        var repetir: Bool
+        var parcelaAtual: Int
+        var totalParcelas: Int
+        var inicio: Int
+        var pagamentos: [String]
+        var excluidos: [String]
+        var adiantadas: Int
+        var juros: Double
+    }
+    struct Cat: Codable {
+        var nome: String
+        var icone: String
+        var tipo: String
+        var limite: Double
+        var essencial: Bool
+        var ordem: Int
+    }
+    struct Cart: Codable {
+        var nome: String
+        var tipo: String
+        var diaVencimento: Int
+        var diaFechamento: Int
+        var ordem: Int
+        var faturasPagas: [String]
+    }
+    struct L: Codable {
+        var mes: Int
+        var valor: Double
+    }
+}
+
+struct LinhaBackup: Codable {
+    var user_id: String
+    var dados: BackupDados
+    var atualizado_em: String
+}
+
+@MainActor
+enum Backup {
+    private static let preferenciasTexto = ["nomeUsuario", "diasAviso", "moeda", "tema", "objetivo", "metodoQuitacao"]
+
+    static var ultimo: Date? { UserDefaults.standard.object(forKey: "ultimoBackup") as? Date }
+
+    static func temDadosLocais(_ ctx: ModelContext) -> Bool {
+        ((try? ctx.fetchCount(FetchDescriptor<Transacao>())) ?? 0) > 0
+            || ((try? ctx.fetchCount(FetchDescriptor<Conta>())) ?? 0) > 0
+    }
+
+    static func montar(_ ctx: ModelContext) -> BackupDados {
+        let ts = (try? ctx.fetch(FetchDescriptor<Transacao>())) ?? []
+        let cs = (try? ctx.fetch(FetchDescriptor<Conta>())) ?? []
+        let cats = (try? ctx.fetch(FetchDescriptor<Categoria>())) ?? []
+        let carts = (try? ctx.fetch(FetchDescriptor<Carteira>())) ?? []
+        let ls = (try? ctx.fetch(FetchDescriptor<LimiteMensal>())) ?? []
+        let d = UserDefaults.standard
+        var prefs: [String: String] = [:]
+        for k in preferenciasTexto { if let v = d.string(forKey: k) { prefs[k] = v } }
+        if let renda = d.object(forKey: "renda") as? Double { prefs["renda"] = String(renda) }
+        return BackupDados(
+            transacoes: ts.sorted { $0.data < $1.data }.map {
+                .init(tipo: $0.tipoRaw, valor: $0.valor, categoria: $0.categoria, carteira: $0.carteira,
+                      descricao: $0.descricao, data: $0.data.timeIntervalSince1970)
+            },
+            contas: cs.sorted { $0.nome < $1.nome }.map {
+                .init(nome: $0.nome, valor: $0.valor, dia: $0.dia, venceMesSeguinte: $0.venceMesSeguinte,
+                      categoria: $0.categoria, repetir: $0.repetir, parcelaAtual: $0.parcelaAtual,
+                      totalParcelas: $0.totalParcelas, inicio: $0.inicio, pagamentos: $0.pagamentos,
+                      excluidos: $0.excluidos, adiantadas: $0.adiantadas, juros: $0.juros)
+            },
+            categorias: cats.sorted { $0.ordem < $1.ordem }.map {
+                .init(nome: $0.nome, icone: $0.icone, tipo: $0.tipoRaw, limite: $0.limite,
+                      essencial: $0.essencial, ordem: $0.ordem)
+            },
+            carteiras: carts.sorted { $0.ordem < $1.ordem }.map {
+                .init(nome: $0.nome, tipo: $0.tipoRaw, diaVencimento: $0.diaVencimento,
+                      diaFechamento: $0.diaFechamento, ordem: $0.ordem, faturasPagas: $0.faturasPagas)
+            },
+            limites: ls.sorted { $0.mes < $1.mes }.map { .init(mes: $0.mes, valor: $0.valor) },
+            preferencias: prefs
+        )
+    }
+
+    /// Troca tudo que está no iPhone pelo que veio do backup
+    static func aplicar(_ b: BackupDados, ctx: ModelContext) {
+        try? ctx.delete(model: Transacao.self)
+        try? ctx.delete(model: Conta.self)
+        try? ctx.delete(model: Categoria.self)
+        try? ctx.delete(model: Carteira.self)
+        try? ctx.delete(model: LimiteMensal.self)
+        for t in b.transacoes {
+            ctx.insert(Transacao(tipo: TipoTransacao(rawValue: t.tipo) ?? .gasto, valor: t.valor, categoria: t.categoria,
+                                 carteira: t.carteira, descricao: t.descricao,
+                                 data: Date(timeIntervalSince1970: t.data)))
+        }
+        for c in b.contas {
+            let nova = Conta(nome: c.nome, valor: c.valor, dia: c.dia, venceMesSeguinte: c.venceMesSeguinte,
+                             categoria: c.categoria, repetir: c.repetir, parcelaAtual: c.parcelaAtual,
+                             totalParcelas: c.totalParcelas, inicio: c.inicio)
+            nova.pagamentos = c.pagamentos
+            nova.excluidos = c.excluidos
+            nova.adiantadas = c.adiantadas
+            nova.juros = c.juros
+            ctx.insert(nova)
+        }
+        for c in b.categorias {
+            ctx.insert(Categoria(nome: c.nome, icone: c.icone, tipo: TipoTransacao(rawValue: c.tipo) ?? .gasto,
+                                 limite: c.limite, essencial: c.essencial, ordem: c.ordem))
+        }
+        for c in b.carteiras {
+            let nova = Carteira(nome: c.nome, tipo: TipoCarteira(rawValue: c.tipo) ?? .credito,
+                                diaVencimento: c.diaVencimento, ordem: c.ordem)
+            nova.diaFechamento = c.diaFechamento
+            nova.faturasPagas = c.faturasPagas
+            ctx.insert(nova)
+        }
+        for l in b.limites { ctx.insert(LimiteMensal(mes: l.mes, valor: l.valor)) }
+        try? ctx.save()
+        let d = UserDefaults.standard
+        for (k, v) in b.preferencias {
+            if k == "renda" { d.set(Double(v) ?? 0, forKey: k) } else { d.set(v, forKey: k) }
+        }
+        Store.semear(ctx)
+        Notificacoes.reagendar(ctx)
+    }
+
+    /// Envia o backup se algo mudou desde o último (ou sempre, se forcar = true)
+    @discardableResult
+    static func enviar(_ ctx: ModelContext, forcar: Bool = false) async -> String? {
+        guard let uid = UserDefaults.standard.string(forKey: "uidAtual") else { return "Entre na sua conta primeiro." }
+        let dados = montar(ctx)
+        guard let json = try? JSONEncoder().encode(dados) else { return "Não foi possível montar o backup." }
+        let hash = SHA256.hash(data: json).map { String(format: "%02x", $0) }.joined()
+        let d = UserDefaults.standard
+        if !forcar && hash == d.string(forKey: "backupHash") { return nil }
+
+        // dá uns segundos a mais pro envio terminar quando o app vai pro fundo
+        let tarefa = UIApplication.shared.beginBackgroundTask(withName: "backup")
+        defer { if tarefa != .invalid { UIApplication.shared.endBackgroundTask(tarefa) } }
+        do {
+            let linha = LinhaBackup(user_id: uid.lowercased(), dados: dados,
+                                    atualizado_em: ISO8601DateFormatter().string(from: .now))
+            try await Nuvem.client.from("backups").upsert(linha, onConflict: "user_id").execute()
+            d.set(hash, forKey: "backupHash")
+            d.set(Date.now, forKey: "ultimoBackup")
+            d.removeObject(forKey: "erroBackup")
+            return nil
+        } catch {
+            let msg = Sessao.mensagem(error)
+            d.set(msg, forKey: "erroBackup")
+            return msg
+        }
+    }
+
+    static func baixar() async throws -> LinhaBackup? {
+        guard let uid = UserDefaults.standard.string(forKey: "uidAtual") else { return nil }
+        let linhas: [LinhaBackup] = try await Nuvem.client.from("backups")
+            .select()
+            .eq("user_id", value: uid.lowercased())
+            .execute()
+            .value
+        return linhas.first
+    }
+}
