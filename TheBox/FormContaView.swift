@@ -25,12 +25,12 @@ struct FormContaView: View {
         self.conta = conta
         self.mesInicial = mesInicial
         _nome = State(initialValue: conta?.nome ?? "")
-        _valorTexto = State(initialValue: conta?.valor.textoCampo ?? "")
+        _valorTexto = State(initialValue: textoDinheiro(conta?.valor ?? 0))
         _diaTexto = State(initialValue: conta.map { String($0.dia) } ?? "")
         _inicio = State(initialValue: conta?.inicio ?? mesInicial)
         _venceMesSeguinte = State(initialValue: conta?.venceMesSeguinte ?? false)
         _categoria = State(initialValue: conta?.categoria ?? "")
-        _repetir = State(initialValue: conta?.repetir ?? true)
+        _repetir = State(initialValue: conta?.repetir ?? false)
         let p = conta?.parcelaAtual ?? 0
         let t = conta?.totalParcelas ?? 0
         _parcelaTexto = State(initialValue: p > 0 ? String(p) : "")
@@ -59,7 +59,7 @@ struct FormContaView: View {
                     TextField("Nome da conta", text: $nome).campo()
                     HStack(spacing: 10) {
                         Text(Moeda.atual.simbolo).fontWeight(.semibold).foregroundStyle(.secondary)
-                        TextField("Valor (ex: 150,00)", text: $valorTexto).keyboardType(.decimalPad)
+                        TextField("Valor (ex: 150,00)", text: $valorTexto).mascaraDinheiro($valorTexto)
                     }
                     .campo()
                     HStack(spacing: 12) {

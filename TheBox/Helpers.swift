@@ -84,6 +84,30 @@ extension Double {
     var inteiro: String { formatted(.number.precision(.fractionLength(0)).locale(ptBR)) }
 }
 
+/// Formata o que foi digitado como dinheiro, contando centavos: "21655" → "216,55"
+func mascaraDinheiro(_ texto: String) -> String {
+    let digitos = String(texto.filter(\.isNumber).drop(while: { $0 == "0" }).prefix(11))
+    guard !digitos.isEmpty else { return "" }
+    let valor = Double(Int(digitos) ?? 0) / 100
+    return valor.formatted(.number.precision(.fractionLength(2)).locale(ptBR))
+}
+
+/// Valor já existente no formato do campo com máscara ("1.000,00")
+func textoDinheiro(_ v: Double) -> String {
+    v > 0 ? v.formatted(.number.precision(.fractionLength(2)).locale(ptBR)) : ""
+}
+
+extension View {
+    /// Aplica a máscara de dinheiro num campo de texto enquanto a pessoa digita
+    func mascaraDinheiro(_ texto: Binding<String>) -> some View {
+        self.keyboardType(.numberPad)
+            .onChange(of: texto.wrappedValue) { _, novo in
+                let f = TheBox.mascaraDinheiro(novo)
+                if f != novo { texto.wrappedValue = f }
+            }
+    }
+}
+
 /// Converte "1.234,56" ou "12,5" em número
 func lerValor(_ s: String) -> Double? {
     let limpo = s.replacingOccurrences(of: Moeda.atual.simbolo, with: "")
@@ -486,7 +510,7 @@ struct EditarValorSheet: View {
         self.titulo = titulo
         self.subtitulo = subtitulo
         self.salvar = salvar
-        _texto = State(initialValue: valor > 0 ? valor.inteiro.replacingOccurrences(of: ".", with: "") : "")
+        _texto = State(initialValue: textoDinheiro(valor))
     }
 
     var body: some View {
@@ -495,9 +519,9 @@ struct EditarValorSheet: View {
             Text(subtitulo).foregroundStyle(.secondary)
             HStack(spacing: 12) {
                 Text(Moeda.atual.simbolo).font(.system(size: 25, weight: .bold)).foregroundStyle(.secondary)
-                TextField("0", text: $texto)
+                TextField("0,00", text: $texto)
                     .font(.system(size: 30, weight: .bold))
-                    .keyboardType(.decimalPad)
+                    .mascaraDinheiro($texto)
                     .focused($foco)
             }
             .padding(.vertical, 18)

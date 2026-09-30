@@ -316,6 +316,17 @@ struct DetalhesSaldoView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 18) {
                 Text("Saldo de \(Mes.nome(mes).lowercased())").font(.system(size: 21, weight: .bold))
+                if mes == Mes.indice() {
+                    Button {
+                        ajustando = true
+                    } label: {
+                        Label("Ajustar saldo igual ao do banco", systemImage: "equal.circle")
+                    }
+                    .buttonStyle(EstiloContorno())
+                    
+                    Text("Digite quanto tem na sua conta agora. O app cria um ajuste com a diferença, sem mexer nos seus gastos e categorias.")
+                        .font(.footnote).foregroundStyle(.secondary)
+                }
                 VStack(spacing: 0) {
                     LinhaStat(titulo: "Receitas", valor: fin.receitas(em: mes).moeda)
                     Divider().overlay(Color.borda)
@@ -353,22 +364,11 @@ struct DetalhesSaldoView: View {
                 Text("Contas pagas no cartão de crédito não saem do saldo na hora: entram na fatura do mês seguinte.")
                     .font(.footnote).foregroundStyle(.secondary)
 
-                if mes == Mes.indice() {
-                    Button {
-                        ajustando = true
-                    } label: {
-                        Label("Ajustar saldo igual ao do banco", systemImage: "equal.circle")
-                    }
-                    .buttonStyle(EstiloContorno())
-                    .padding(.top, 6)
-                    Text("Digite quanto tem na sua conta agora. O app cria um ajuste com a diferença, sem mexer nos seus gastos e categorias.")
-                        .font(.footnote).foregroundStyle(.secondary)
-                }
             }
             .padding(24)
             .padding(.top, 10)
         }
-        .folha([.medium, .large])
+        .folha([.large])
         .sheet(isPresented: $ajustando) {
             let atual = Financas(transacoes: transacoes, contas: contas, carteiras: carteiras).saldo(em: mes)
             EditarValorSheet(titulo: "Saldo no banco agora",
