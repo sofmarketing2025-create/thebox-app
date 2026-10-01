@@ -4,6 +4,7 @@ import Charts
 
 struct AnaliseView: View {
     @Binding var mes: Int
+    @Environment(AppState.self) private var estado
     @Environment(\.modelContext) private var ctx
     @Query private var transacoes: [Transacao]
     @Query private var contas: [Conta]
@@ -33,9 +34,29 @@ struct AnaliseView: View {
                     SeletorMes(mes: $mes)
                 }
 
+                HStack(spacing: 10) {
+                    Button { estado.abrirRevisao = true } label: {
+                        Label("Revisão da semana", systemImage: "calendar.badge.clock")
+                            .font(.system(size: 13, weight: .semibold))
+                            .frame(maxWidth: .infinity).frame(height: 42)
+                            .background(Color.cartao, in: Capsule())
+                            .overlay(Capsule().stroke(Color.borda))
+                    }
+                    Button { estado.abrirFechamento = mes < Mes.indice() ? mes : Mes.indice() - 1 } label: {
+                        Label("Fechamento do mês", systemImage: "doc.text.magnifyingglass")
+                            .font(.system(size: 13, weight: .semibold))
+                            .frame(maxWidth: .infinity).frame(height: 42)
+                            .background(Color.cartao, in: Capsule())
+                            .overlay(Capsule().stroke(Color.borda))
+                    }
+                }
+                .buttonStyle(.plain)
+
                 CartaoOrcamento(mes: mes, gasto: gasto, limite: limite) { editarLimite = true }
 
                 CartaoComparacao(mes: mes, atual: gasto, anterior: anterior, temAnterior: temAnterior)
+
+                CartaoAssinaturas()
 
                 ForEach(comGasto) { c in
                     LinhaMeta(categoria: c, gasto: porCategoria[c.nome] ?? 0)

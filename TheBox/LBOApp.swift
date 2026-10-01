@@ -11,6 +11,8 @@ final class AppState {
     var abrirRegistro = false
     var tourPasso: Int? = nil
     var bloqueado = UserDefaults.standard.bool(forKey: "faceID")
+    var abrirRevisao = false
+    var abrirFechamento: Int? = nil
 
     struct Desfazer {
         let id = UUID()
@@ -68,6 +70,14 @@ final class NotifDelegate: NSObject, UNUserNotificationCenterDelegate {
                                 willPresent notification: UNNotification) async -> UNNotificationPresentationOptions {
         [.banner, .list, .sound]
     }
+
+    // Toque no aviso ou no botão "Paguei"
+    func userNotificationCenter(_ center: UNUserNotificationCenter,
+                                didReceive response: UNNotificationResponse) async {
+        let acao = response.actionIdentifier
+        let info = response.notification.request.content.userInfo
+        await MainActor.run { Notificacoes.tratar(acao: acao, info: info) }
+    }
 }
 
 @main
@@ -78,6 +88,7 @@ struct LBOApp: App {
 
     init() {
         UNUserNotificationCenter.current().delegate = NotifDelegate.shared
+        Notificacoes.registrarCategorias()
     }
 
     private var esquema: ColorScheme? {

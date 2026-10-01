@@ -122,6 +122,45 @@ enum PlanoCalculo {
         return (fimPor.values.max() ?? hoje, fimPor)
     }
 
+    /// Quanto custa atrasar a próxima parcela: juros da conta (ou 1% a.m. estimado) + multa de 2%
+    static func custoAtraso(_ d: Divida) -> (valor: Double, estimado: Bool) {
+        let parcela = d.proxima?.valor ?? 0
+        if d.juros > 0 { return (parcela * (d.juros / 100 + 0.02), false) }
+        return (parcela * 0.03, true)
+    }
+
+    /// Quanto faltava pagar no começo de cada mês (pra o gráfico da dívida caindo)
+    static func dividaNoMes(_ contas: [Conta], _ m: Int) -> Double {
+        contas.filter(temFim).reduce(0) { soma, c in
+            let ultimo = ultimoMes(c)
+            guard ultimo >= m else { return soma }
+            let parcelas = (max(m, c.inicio)...ultimo).filter { c.ocorre(em: $0) }.count
+            return soma + Double(parcelas) * c.valor
+        }
+    }
+
+    /// Fechou acordo à vista: registra o pagamento e tira todas as parcelas que faltavam
+    @MainActor
+    static func quitarAVista(_ d: Divida, valor: Double, ctx: ModelContext) {
+        let parcelas = d.parcelas
+        let t = Transacao(tipo: .gasto, valor: valor,
+                          categoria: d.proxima?.conta.categoria.isEmpty == false ? (d.proxima?.conta.categoria ?? "Outros") : "Outros",
+                          carteira: "", descricao: "Quitação à vista: \(d.nome)")
+        withAnimation {
+            ctx.insert(t)
+            for p in parcelas { p.conta.excluir(em: p.mes) }
+            try? ctx.save()
+        }
+        Notificacoes.reagendar(ctx)
+        Notificacoes.agora("\(d.nome) quitada! 🎉", "Economia de \((d.total - valor).moeda) com o acordo à vista.")
+        AppState.shared.oferecerDesfazer("\(d.nome) quitada à vista") {
+            for p in parcelas { p.conta.restaurar(em: p.mes) }
+            ctx.delete(t)
+            try? ctx.save()
+            Notificacoes.reagendar(ctx)
+        }
+    }
+
     /// Paga agora a última parcela da dívida (encurta o prazo), com opção de desfazer
     @MainActor
     static func adiantar(_ d: Divida, ctx: ModelContext) {
@@ -163,6 +202,7 @@ struct PlanoQuitacaoView: View {
     @State private var editarRenda = false
     @State private var adiantando: Divida?
     @State private var editando: Conta?
+    @State private var negociando: Divida?
 
     private var metodo: MetodoQuitacao { MetodoQuitacao(rawValue: metodoRaw) ?? .bolaDeNeve }
 
@@ -195,12 +235,14 @@ struct PlanoQuitacaoView: View {
                         .cartao(18)
                 } else {
                     resumo(total: totalDevido, parcelas: dividas.reduce(0) { $0 + $1.restantes }, fim: fimNatural)
+                    graficoDivida(hoje: hoje, fim: fimNatural)
                 }
                 cartaoSobra(renda: renda, registrada: rendaManual == 0 && registrada > 0,
                             mes: apertado, compromisso: contasDe(apertado), media: mediaGastos, sobra: sobra)
                 if !dividas.isEmpty {
                     linhaDoTempo(fin: fin, hoje: hoje, fim: max(fimNatural, hoje + 1))
                     simulador(extra: extraAtual, fimNatural: fimNatural, fimPlano: simulado.fim, hoje: hoje)
+                    prioridadeSeFaltar(dividas, hoje: hoje)
                     ordemQuitacao(ordem, fimPlano: simulado.fimPorConta, hoje: hoje)
                 }
                 let fixas = contas.filter { !PlanoCalculo.temFim($0) && ($0.ocorre(em: hoje) || $0.ocorre(em: hoje + 1)) }
@@ -214,6 +256,7 @@ struct PlanoQuitacaoView: View {
         }
         .background(Color.fundo)
         .sheet(item: $editando) { c in FormContaView(conta: c, mesInicial: Mes.indice()) }
+        .sheet(item: $negociando) { d in NegociarSheet(divida: d) }
         .sheet(isPresented: $editarRenda) {
             EditarValorSheet(titulo: "Sua renda por mês",
                              subtitulo: "Quanto entra por mês, somando salário e outras receitas fixas",
@@ -426,6 +469,64 @@ struct PlanoQuitacaoView: View {
         return t
     }
 
+    /// Gráfico do total que faltava pagar em cada mês (a linha descendo até zero)
+    private func graficoDivida(hoje: Int, fim: Int) -> some View {
+        let inicio = max(hoje - 6, (contas.filter(PlanoCalculo.temFim).map(\.inicio).min() ?? hoje))
+        let meses = Array(inicio...max(fim + 1, hoje + 1)).suffix(30)
+        let pontos = meses.map { PontoMes(mes: $0, valor: PlanoCalculo.dividaNoMes(contas, $0)) }
+        let antes = pontos.first?.valor ?? 0
+        let agora = PlanoCalculo.dividaNoMes(contas, hoje)
+        return VStack(alignment: .leading, spacing: 10) {
+            Text("SUA DÍVIDA MÊS A MÊS").font(.system(size: 12, weight: .semibold)).tracking(1.5).foregroundStyle(.secondary)
+            Chart(pontos) { p in
+                AreaMark(x: .value("Mês", mesAno(p.mes)), y: .value("Dívida", p.valor))
+                    .interpolationMethod(.monotone)
+                    .foregroundStyle(LinearGradient(colors: [Color.primary.opacity(0.18), .clear], startPoint: .top, endPoint: .bottom))
+                LineMark(x: .value("Mês", mesAno(p.mes)), y: .value("Dívida", p.valor))
+                    .interpolationMethod(.monotone)
+                    .foregroundStyle(Color.primary)
+                if p.mes == hoje {
+                    PointMark(x: .value("Mês", mesAno(p.mes)), y: .value("Dívida", p.valor))
+                        .foregroundStyle(Color.green)
+                        .symbolSize(70)
+                }
+            }
+            .chartYAxis(.hidden)
+            .chartXAxis { AxisMarks { _ in AxisValueLabel().font(.system(size: 9)) } }
+            .frame(height: 140)
+            if antes > agora && antes > 0 {
+                Text("Desde \(mesAno(pontos.first?.mes ?? hoje)) você já tirou \((antes - agora).moeda) da dívida. 💪")
+                    .font(.system(size: 12)).foregroundStyle(.green)
+            } else {
+                Text("Cada parcela paga e cada adiantamento fazem essa linha descer mais rápido.")
+                    .font(.system(size: 12)).foregroundStyle(.secondary)
+            }
+        }
+        .cartao(20)
+    }
+
+    /// Se o dinheiro não der pra tudo neste mês: o que pagar primeiro (o que mais custa atrasar)
+    @ViewBuilder
+    private func prioridadeSeFaltar(_ dividas: [Divida], hoje: Int) -> some View {
+        let doMes = dividas.filter { ($0.proxima?.mes ?? Int.max) <= hoje }
+            .sorted { PlanoCalculo.custoAtraso($0).valor > PlanoCalculo.custoAtraso($1).valor }
+        if doMes.count >= 2 {
+            VStack(alignment: .leading, spacing: 8) {
+                Label("SE NÃO DER PRA PAGAR TUDO ESTE MÊS", systemImage: "exclamationmark.triangle")
+                    .font(.system(size: 12, weight: .semibold)).tracking(1.2).foregroundStyle(.secondary)
+                Text("Pague primeiro o que mais custa atrasar:").font(.system(size: 13)).foregroundStyle(.secondary)
+                ForEach(Array(doMes.prefix(4).enumerated()), id: \.element.id) { i, d in
+                    HStack {
+                        Text("\(i + 1). \(d.nome)").font(.system(size: 14, weight: .medium))
+                        Spacer()
+                        Text("atraso ~\(PlanoCalculo.custoAtraso(d).valor.moeda)").font(.system(size: 12)).foregroundStyle(.orange)
+                    }
+                }
+            }
+            .cartao(20)
+        }
+    }
+
     /// "•••" de uma dívida: editar a próxima conta, remover a próxima parcela ou remover tudo
     private func menuDivida(_ d: Divida) -> some View {
         Menu {
@@ -435,6 +536,7 @@ struct PlanoQuitacaoView: View {
                     Exclusao.contaSoNoMes(p.conta, mes: p.mes, ctx: ctx)
                 } label: { Label("Remover parcela de \(mesAno(p.mes))", systemImage: "calendar.badge.minus") }
             }
+            Button { negociando = d } label: { Label("Negociar à vista", systemImage: "hand.raised") }
             Button(role: .destructive) {
                 Exclusao.contas(d.contas, nome: d.nome, ctx: ctx)
             } label: { Label("Remover tudo (\(d.restantes)x)", systemImage: "trash") }
@@ -467,6 +569,11 @@ struct PlanoQuitacaoView: View {
                         }
                         Text(descricao(d))
                             .font(.system(size: 12)).foregroundStyle(.secondary)
+                        let custo = PlanoCalculo.custoAtraso(d)
+                        if custo.valor > 0 {
+                            Text("Atrasar a próxima custa ~\(custo.valor.moeda)\(custo.estimado ? " (estimado: multa 2% + juros 1%)" : "")")
+                                .font(.system(size: 11)).foregroundStyle(.orange)
+                        }
                         HStack(spacing: 6) {
                             Text("Termina \(mesAno(d.fim))").foregroundStyle(.secondary)
                             if let f = fimPlano[d.id], f < d.fim {
@@ -486,6 +593,58 @@ struct PlanoQuitacaoView: View {
                     }
                 }
                 .cartao(16)
+            }
+        }
+    }
+}
+
+/// Simula pagar o restante de uma dívida à vista com desconto e registra o acordo
+struct NegociarSheet: View {
+    let divida: Divida
+    @Environment(\.dismiss) private var dismiss
+    @Environment(\.modelContext) private var ctx
+    @State private var desconto: Double = 20
+    @State private var confirmar = false
+
+    var body: some View {
+        let total = divida.total
+        let aVista = (total * (1 - desconto / 100) * 100).rounded() / 100
+        ScrollView {
+            VStack(alignment: .leading, spacing: 16) {
+                Text("Negociar \(divida.nome)").font(.system(size: 21, weight: .bold))
+                Text("Ligue ou fale no chat com o credor e peça desconto pra quitar o que falta de uma vez. Parcelamentos e financiamentos costumam dar de 10% a 30%.")
+                    .font(.system(size: 13)).foregroundStyle(.secondary)
+                VStack(alignment: .leading, spacing: 8) {
+                    LinhaStat(titulo: "Falta pagar parcelado", valor: total.moeda)
+                    Divisor()
+                    HStack {
+                        Text("Desconto pedido").foregroundStyle(.secondary)
+                        Spacer()
+                        Text("\(Int(desconto))%").fontWeight(.semibold)
+                    }
+                    .padding(.top, 8)
+                    Slider(value: $desconto, in: 0...70, step: 5)
+                        .tint(.green)
+                    Divisor()
+                    LinhaStat(titulo: "Pagaria à vista", valor: aVista.moeda, destaque: true)
+                    Text("Economia de \((total - aVista).moeda)")
+                        .font(.system(size: 14, weight: .semibold)).foregroundStyle(.green)
+                }
+                .padding(18)
+                .background(Color.cartao2.opacity(0.45), in: RoundedRectangle(cornerRadius: 20, style: .continuous))
+
+                Button("Fechei acordo por \(aVista.moeda)") { confirmar = true }
+                    .buttonStyle(EstiloPrincipal(ativo: aVista > 0))
+                Text("Ao confirmar, o app registra o pagamento de \(aVista.moeda) hoje e tira as \(divida.restantes) parcelas que faltavam.")
+                    .font(.system(size: 12)).foregroundStyle(.secondary)
+            }
+            .padding(28)
+        }
+        .folha([.large])
+        .confirmationDialog("Registrar o acordo?", isPresented: $confirmar, titleVisibility: .visible) {
+            Button("Sim, paguei \(aVista.moeda)") {
+                PlanoCalculo.quitarAVista(divida, valor: aVista, ctx: ctx)
+                dismiss()
             }
         }
     }

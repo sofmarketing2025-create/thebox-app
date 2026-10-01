@@ -107,7 +107,7 @@ enum Notificacoes {
         let hora = d.object(forKey: "horaAviso") as? Int ?? 9
         let agora = Date.now
         let cal = Calendar.current
-        var avisos: [(quando: Date, titulo: String, corpo: String)] = []
+        var avisos: [Aviso] = []
 
         let transacoes = (try? ctx.fetch(FetchDescriptor<Transacao>())) ?? []
         let contas = (try? ctx.fetch(FetchDescriptor<Conta>())) ?? []
@@ -119,23 +119,29 @@ enum Notificacoes {
             // Olha meses suficientes pra caber o aviso mais antecipado (ex.: 90 dias antes)
             let meses = max(2, (dias.max() ?? 0) / 30 + 2)
             for i in hoje...(hoje + meses) {
-                var itens: [(nome: String, valor: Double, venc: Date, fatura: Bool)] = []
+                var itens: [(nome: String, valor: Double, venc: Date, fatura: Bool, info: [String: String])] = []
                 for conta in contas where conta.ocorre(em: i) && !conta.pago(em: i) {
-                    itens.append((conta.nome, conta.valor, conta.vencimento(em: i, hora: hora), false))
+                    itens.append((conta.nome, conta.valor, conta.vencimento(em: i, hora: hora), false,
+                                  ["conta": conta.chave.uuidString, "mes": String(i)]))
                 }
                 for cartao in fin.cartoes() where !cartao.faturaPaga(em: i) {
                     let v = fin.fatura(cartao, em: i)
-                    if v > 0 { itens.append(("Fatura \(cartao.nome)", v, Mes.data(i, dia: cartao.diaVencimento, hora: hora), true)) }
+                    if v > 0 {
+                        itens.append(("Fatura \(cartao.nome)", v, Mes.data(i, dia: cartao.diaVencimento, hora: hora), true,
+                                      ["cartao": cartao.chave.uuidString, "mes": String(i)]))
+                    }
                 }
                 for item in itens {
-                    avisos.append((item.venc, item.fatura ? "Fatura chegando" : item.nome, "\(item.valor.moeda) vence hoje."))
+                    let titulo = item.fatura ? "Fatura chegando" : item.nome
+                    avisos.append(Aviso(quando: item.venc, titulo: titulo, corpo: "\(item.valor.moeda) vence hoje.",
+                                        info: item.info, categoria: "conta"))
                     for antes in dias {
                         guard let antecipado = cal.date(byAdding: .day, value: -antes, to: item.venc) else { continue }
                         let quando = antes == 1 ? "amanhã" : "em \(antes) dias"
                         let corpo = item.fatura
                             ? "Sua \(item.nome.lowercased()) vence \(quando) (\(item.valor.moeda))."
                             : "\(item.valor.moeda) vence \(quando)."
-                        avisos.append((antecipado, item.fatura ? "Fatura chegando" : item.nome, corpo))
+                        avisos.append(Aviso(quando: antecipado, titulo: titulo, corpo: corpo, info: item.info, categoria: "conta"))
                     }
                 }
             }
@@ -148,7 +154,7 @@ enum Notificacoes {
             if let domingo = cal.nextDate(after: agora, matching: comps, matchingPolicy: .nextTime),
                let inicio = cal.date(byAdding: .day, value: -6, to: cal.startOfDay(for: domingo)),
                let inicio4 = cal.date(byAdding: .day, value: -28, to: inicio) {
-                let gastos = transacoes.filter { $0.tipo == .gasto }
+                let gastos = transacoes.filter { $0.tipo == .gasto && !$0.ehAjuste }
                 let semana = gastos.filter { $0.data >= inicio }.reduce(0) { $0 + $1.valor }
                 let media = gastos.filter { $0.data >= inicio4 && $0.data < inicio }.reduce(0) { $0 + $1.valor } / 4
                 var corpo = "Você gastou \(semana.moeda) essa semana."
@@ -156,7 +162,21 @@ enum Notificacoes {
                     let dif = (semana - media) / media
                     corpo = "Você gastou \(semana.moeda) essa semana, \(porcento(abs(dif))) \(dif <= 0 ? "a menos" : "a mais") que a média."
                 }
-                avisos.append((domingo, "Resumo da semana", corpo))
+                avisos.append(Aviso(quando: domingo, titulo: "Resumo da semana", corpo: corpo + " Toque pra revisar.",
+                                    info: ["abrir": "revisao"], categoria: nil))
+            }
+        }
+
+        // Fechamento do mês: dia 1º às 10h
+        if let proximoMes = cal.date(byAdding: .month, value: 1, to: agora) {
+            var c = cal.dateComponents([.year, .month], from: proximoMes)
+            c.day = 1
+            c.hour = 10
+            if let quando = cal.date(from: c) {
+                let mesFechado = Mes.indice(agora)
+                avisos.append(Aviso(quando: quando, titulo: "Fechamento de \(Mes.nome(mesFechado).lowercased())",
+                                    corpo: "Veja quanto entrou, saiu, quanto você quitou e guardou no mês.",
+                                    info: ["abrir": "fechamento", "mes": String(mesFechado)], categoria: nil))
             }
         }
 
@@ -165,6 +185,8 @@ enum Notificacoes {
             c.title = aviso.titulo
             c.body = aviso.corpo
             c.sound = .default
+            c.userInfo = aviso.info
+            if let cat = aviso.categoria { c.categoryIdentifier = cat }
             let comps = cal.dateComponents([.year, .month, .day, .hour, .minute], from: aviso.quando)
             center.add(UNNotificationRequest(identifier: UUID().uuidString, content: c,
                                              trigger: UNCalendarNotificationTrigger(dateMatching: comps, repeats: false)))
@@ -173,11 +195,56 @@ enum Notificacoes {
         if ligado("lembreteRegistro") {
             let c = UNMutableNotificationContent()
             c.title = "Registrou seus gastos de hoje?"
-            c.body = "Leva dois segundos: toque duas vezes nas costas do iPhone."
+            c.body = "Leva dois segundos: toque duas vezes nas costas do iPhone ou diga \"E aí Siri, gastei no LBO Finanças\"."
             c.sound = .default
             center.add(UNNotificationRequest(identifier: "lembrete-diario", content: c,
                                              trigger: UNCalendarNotificationTrigger(dateMatching: DateComponents(hour: 20, minute: 30),
                                                                                     repeats: true)))
+        }
+    }
+
+    struct Aviso {
+        let quando: Date
+        let titulo: String
+        let corpo: String
+        let info: [String: String]
+        let categoria: String?
+    }
+
+    /// Botão "Paguei" nos avisos de conta e fatura
+    static func registrarCategorias() {
+        let paguei = UNNotificationAction(identifier: "paguei", title: "Paguei", options: [])
+        let conta = UNNotificationCategory(identifier: "conta", actions: [paguei], intentIdentifiers: [], options: [])
+        UNUserNotificationCenter.current().setNotificationCategories([conta])
+    }
+
+    /// Toque no aviso ou no botão "Paguei"
+    @MainActor
+    static func tratar(acao: String, info: [AnyHashable: Any]) {
+        let mes = (info["mes"] as? String).flatMap { Int($0) }
+        if acao == "paguei", let container = Store.atual, let mes {
+            let ctx = container.mainContext
+            if let id = (info["conta"] as? String).flatMap(UUID.init(uuidString:)),
+               let conta = try? ctx.fetch(FetchDescriptor<Conta>(predicate: #Predicate { $0.chave == id })).first {
+                let carteiras = (try? ctx.fetch(FetchDescriptor<Carteira>(sortBy: [SortDescriptor(\.ordem)]))) ?? []
+                let pagou = carteiras.first { $0.tipo == .pix }?.nome ?? carteiras.first { $0.tipo != .credito }?.nome ?? ""
+                conta.marcarPago(em: mes, carteira: pagou)
+                try? ctx.save()
+                agora("\(conta.nome) marcada como paga", "\(conta.valor.moeda) · \(Mes.nome(mes).lowercased())")
+            } else if let id = (info["cartao"] as? String).flatMap(UUID.init(uuidString:)),
+                      let cartao = try? ctx.fetch(FetchDescriptor<Carteira>(predicate: #Predicate { $0.chave == id })).first,
+                      !cartao.faturaPaga(em: mes) {
+                cartao.alternarFatura(em: mes)
+                try? ctx.save()
+                agora("Fatura \(cartao.nome) marcada como paga", Mes.nome(mes))
+            }
+            reagendar(ctx)
+            return
+        }
+        switch info["abrir"] as? String {
+        case "revisao": AppState.shared.abrirRevisao = true
+        case "fechamento": AppState.shared.abrirFechamento = mes ?? (Mes.indice() - 1)
+        default: break
         }
     }
 }

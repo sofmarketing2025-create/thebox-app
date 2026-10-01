@@ -67,6 +67,11 @@ struct MainView: View {
         }
         .background(Color.fundo.ignoresSafeArea())
         .sheet(isPresented: $estado.abrirRegistro) { RegistroSheet() }
+        .sheet(isPresented: $estado.abrirRevisao) { RevisaoSemanaView() }
+        .sheet(isPresented: Binding(get: { estado.abrirFechamento != nil },
+                                    set: { if !$0 { estado.abrirFechamento = nil } })) {
+            FechamentoMesView(mes: estado.abrirFechamento ?? Mes.indice() - 1)
+        }
         .onAppear {
             if !tourFeito && estado.tourPasso == nil { estado.tourPasso = 0 }
         }

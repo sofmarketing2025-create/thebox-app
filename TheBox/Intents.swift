@@ -149,12 +149,49 @@ struct LBOAtalhos: AppShortcutsProvider {
             systemImageName: "plus.circle"
         )
         AppShortcut(
-            intent: RegistrarGastoIntent(),
+            intent: GasteiIntent(),
             phrases: [
+                "Gastei no \(.applicationName)",
+                "Anota um gasto no \(.applicationName)",
                 "Registrar gasto no \(.applicationName)"
             ],
-            shortTitle: "Registrar gasto",
-            systemImageName: "creditcard"
+            shortTitle: "Gastei",
+            systemImageName: "mic"
         )
+    }
+}
+
+/// "E aí Siri, gastei no LBO Finanças" → pergunta o valor e onde foi, escolhe a categoria sozinho
+struct GasteiIntent: AppIntent {
+    static var title: LocalizedStringResource = "Gastei"
+    static var description = IntentDescription("Registra um gasto falando com a Siri: ela pergunta quanto foi e onde.")
+    static var openAppWhenRun: Bool = false
+
+    @Parameter(title: "Valor", requestValueDialog: IntentDialog("Quanto você gastou?"))
+    var valor: Double
+
+    @Parameter(title: "Onde foi", requestValueDialog: IntentDialog("Onde foi?"))
+    var onde: String
+
+    static var parameterSummary: some ParameterSummary {
+        Summary("Gastei \(\.$valor) em \(\.$onde)")
+    }
+
+    @MainActor
+    func perform() async throws -> some IntentResult & ProvidesDialog {
+        guard let container = Store.atual else {
+            throw ErroAtalho(texto: "Entre no LBO Finanças primeiro.")
+        }
+        let ctx = container.mainContext
+        let desc = onde.trimmingCharacters(in: .whitespacesAndNewlines)
+        let cat = Categorizador.categoria(para: desc, ctx: ctx)
+        let carteiras = (try? ctx.fetch(FetchDescriptor<Carteira>(sortBy: [SortDescriptor(\.ordem)]))) ?? []
+        let cart = carteiras.first { $0.tipo == .dinheiro }?.nome ?? carteiras.first { $0.tipo == .pix }?.nome ?? ""
+        let v = abs(valor)
+        ctx.insert(Transacao(tipo: .gasto, valor: v, categoria: cat, carteira: cart, descricao: desc))
+        try ctx.save()
+        Notificacoes.verificarLimite(categoria: cat, valor: v, data: .now, ctx: ctx)
+        Notificacoes.reagendar(ctx)
+        return .result(dialog: IntentDialog(stringLiteral: "Anotado: \(v.moeda) em \(desc.isEmpty ? cat : desc), categoria \(cat)."))
     }
 }
