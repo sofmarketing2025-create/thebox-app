@@ -56,6 +56,8 @@ struct AnaliseView: View {
 
                 CartaoComparacao(mes: mes, atual: gasto, anterior: anterior, temAnterior: temAnterior)
 
+                CartaoTendencias(mes: mes)
+
                 CartaoAssinaturas()
 
                 ForEach(comGasto) { c in

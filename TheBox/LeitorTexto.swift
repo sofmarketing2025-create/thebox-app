@@ -19,7 +19,7 @@ enum LeitorTexto {
                                   "deposito", "creditado", "credito em conta", "salario", "rendimento", "foi recebido", "recebido"]
 
     /// Lê o texto e registra o gasto/receita. Sempre avisa o que aconteceu.
-    static func registrar(texto: String, ctx: ModelContext) throws {
+    static func registrar(texto: String, ctx: ModelContext, foto: Data? = nil) throws {
         UserDefaults.standard.set(String(texto.prefix(3000)), forKey: "ultimoTextoLido")
         UserDefaults.standard.set(Date.now, forKey: "ultimoTextoData")
         guard let r = ler(texto) else {
@@ -36,15 +36,19 @@ enum LeitorTexto {
         let cart = carteira(r, ctx: ctx)
         if ehPropriaConta(r.nome) {
             // Pix entre contas suas não é gasto nem receita
-            ctx.insert(Transacao(tipo: .transferencia, valor: r.valor, categoria: Transacao.outraConta, carteira: cart,
-                                 descricao: r.nome, data: quando, entrada: r.tipo == .receita))
+            let tr = Transacao(tipo: .transferencia, valor: r.valor, categoria: Transacao.outraConta, carteira: cart,
+                               descricao: r.nome, data: quando, entrada: r.tipo == .receita)
+            tr.foto = foto
+            ctx.insert(tr)
             try ctx.save()
             Notificacoes.agora("\(r.valor.moeda) transferido", "Entre contas suas: não conta como gasto.")
             Notificacoes.reagendar(ctx)
             return
         }
         let cat = categoria(r, ctx: ctx)
-        ctx.insert(Transacao(tipo: r.tipo, valor: r.valor, categoria: cat, carteira: cart, descricao: r.nome, data: quando))
+        let nova = Transacao(tipo: r.tipo, valor: r.valor, categoria: cat, carteira: cart, descricao: r.nome, data: quando)
+        nova.foto = foto
+        ctx.insert(nova)
         try ctx.save()
         Notificacoes.registrado(valor: r.valor, titulo: r.nome.isEmpty ? r.tipo.nome : r.nome, categoria: cat)
         if r.tipo == .gasto {

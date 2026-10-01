@@ -34,6 +34,8 @@ targets:
         UISupportedInterfaceOrientations: [UIInterfaceOrientationPortrait]
         ITSAppUsesNonExemptEncryption: false
         NSFaceIDUsageDescription: Usamos o Face ID para proteger seus dados financeiros.
+        NSCameraUsageDescription: Pra você tirar foto do comprovante e guardar junto do gasto.
+        NSPhotoLibraryUsageDescription: Pra você escolher a foto de um comprovante na galeria.
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.lbofinancas.app

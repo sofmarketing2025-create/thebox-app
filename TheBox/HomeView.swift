@@ -13,6 +13,8 @@ struct HomeView: View {
     @Query private var recorrencias: [Recorrencia]
     @AppStorage("nomeUsuario") private var nome = ""
     @AppStorage("ocultarSaldo") private var ocultar = false
+    @AppStorage("orcAtivo") private var orcAtivo = false
+    @AppStorage("orcModo") private var orcModo = "dia"
     @State private var detalhes = false
     @State private var todas = false
     @State private var editando: Transacao?
@@ -43,7 +45,11 @@ struct HomeView: View {
                             ocultar: $ocultar) { detalhes = true }
 
                 if mes == Mes.indice() && !ocultar {
-                    CartaoHoje(fin: fin, mes: mes)
+                    if orcAtivo, let s = OrcamentoDia.situacao(em: .now, transacoes: transacoes) {
+                        CartaoOrcamentoDia(limite: s.limite, gasto: s.gasto, nome: s.nome)
+                    } else {
+                        CartaoHoje(fin: fin, mes: mes)
+                    }
                 }
 
                 HStack(alignment: .firstTextBaseline) {
@@ -274,7 +280,12 @@ struct LinhaTransacao: View {
     var body: some View {
         HStack(spacing: 12) {
             VStack(alignment: .leading, spacing: 5) {
-                Text(transacao.titulo).font(.system(size: 15, weight: .semibold)).lineLimit(1)
+                HStack(spacing: 5) {
+                    Text(transacao.titulo).font(.system(size: 15, weight: .semibold)).lineLimit(1)
+                    if transacao.foto != nil {
+                        Image(systemName: "paperclip").font(.system(size: 11)).foregroundStyle(.secondary)
+                    }
+                }
                 HStack(spacing: 6) {
                     Image(systemName: iconeCarteira).font(.caption)
                     Text(transacao.categoria).lineLimit(1)
@@ -418,31 +429,99 @@ struct GrupoDia: Identifiable {
     var id: Date { dia }
 }
 
+enum PeriodoFiltro: String, CaseIterable, Identifiable {
+    case tudo, semana, esteMes, mesPassado, tresMeses, ano
+    var id: String { rawValue }
+    var nome: String {
+        switch self {
+        case .tudo: return "Todo o período"
+        case .semana: return "Últimos 7 dias"
+        case .esteMes: return "Este mês"
+        case .mesPassado: return "Mês passado"
+        case .tresMeses: return "Últimos 3 meses"
+        case .ano: return "Este ano"
+        }
+    }
+    func contem(_ d: Date) -> Bool {
+        let cal = Calendar.current
+        let hoje = Mes.indice()
+        switch self {
+        case .tudo: return true
+        case .semana: return d >= (cal.date(byAdding: .day, value: -7, to: .now) ?? .now)
+        case .esteMes: return Mes.indice(d) == hoje
+        case .mesPassado: return Mes.indice(d) == hoje - 1
+        case .tresMeses: return Mes.indice(d) >= hoje - 2
+        case .ano: return cal.component(.year, from: d) == cal.component(.year, from: .now)
+        }
+    }
+}
+
 struct TodasTransacoesView: View {
     @Environment(\.modelContext) private var ctx
     @Environment(\.dismiss) private var dismiss
     @Query(sort: \Transacao.data, order: .reverse) private var transacoes: [Transacao]
     @Query(sort: \Carteira.ordem) private var carteiras: [Carteira]
+    @Query(sort: \Categoria.ordem) private var categorias: [Categoria]
     @State private var busca = ""
     @State private var editando: Transacao?
+    @State private var periodo: PeriodoFiltro = .tudo
+    @State private var tipo: TipoTransacao?
+    @State private var categoria: String?
+    @State private var carteira: String?
+    @State private var minimoTexto = ""
+    @State private var maximoTexto = ""
+    @State private var editarValor = false
+    @State private var soComFoto = false
+
+    private var temFiltro: Bool {
+        periodo != .tudo || tipo != nil || categoria != nil || carteira != nil
+            || !minimoTexto.isEmpty || !maximoTexto.isEmpty || soComFoto
+    }
 
     private var filtradas: [Transacao] {
         let b = busca.trimmingCharacters(in: .whitespaces).lowercased()
-        guard !b.isEmpty else { return transacoes }
-        return transacoes.filter {
-            $0.descricao.lowercased().contains(b) || $0.categoria.lowercased().contains(b) || $0.carteira.lowercased().contains(b)
+        let minimo = lerValor(minimoTexto)
+        let maximo = lerValor(maximoTexto)
+        return transacoes.filter { t in
+            if !b.isEmpty && !(t.descricao.lowercased().contains(b) || t.categoria.lowercased().contains(b)
+                                || t.carteira.lowercased().contains(b)) { return false }
+            if !periodo.contem(t.data) { return false }
+            if let tipo, t.tipo != tipo { return false }
+            if let categoria, t.categoria != categoria { return false }
+            if let carteira, t.carteira != carteira { return false }
+            if let minimo, t.valor < minimo { return false }
+            if let maximo, maximo > 0, t.valor > maximo { return false }
+            if soComFoto && t.foto == nil { return false }
+            return true
         }
     }
 
     var body: some View {
-        let grupos = Dictionary(grouping: filtradas) { Calendar.current.startOfDay(for: $0.data) }
+        let lista = filtradas
+        let grupos = Dictionary(grouping: lista) { Calendar.current.startOfDay(for: $0.data) }
             .map { GrupoDia(dia: $0.key, itens: $0.value) }
             .sorted { $0.dia > $1.dia }
+        let gastos = lista.filter { $0.tipo == .gasto && !$0.ehAjuste }.reduce(0) { $0 + $1.valor }
+        let receitas = lista.filter { $0.tipo == .receita && !$0.ehAjuste }.reduce(0) { $0 + $1.valor }
 
         NavigationStack {
             List {
+                Section {
+                    barraFiltros
+                        .listRowInsets(EdgeInsets(top: 4, leading: 0, bottom: 4, trailing: 0))
+                        .listRowBackground(Color.clear)
+                    HStack {
+                        Text("\(lista.count) \(lista.count == 1 ? "transação" : "transações")")
+                        Spacer()
+                        if gastos > 0 { Text("-\(gastos.moeda)") }
+                        if receitas > 0 { Text("+\(receitas.moeda)").foregroundStyle(.green) }
+                    }
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundStyle(.secondary)
+                    .listRowBackground(Color.clear)
+                }
                 if grupos.isEmpty {
-                    Vazio(titulo: "Nada por aqui", texto: "Nenhuma transação encontrada.")
+                    Vazio(titulo: "Nada por aqui", texto: temFiltro ? "Nenhuma transação com esses filtros." : "Nenhuma transação encontrada.")
                         .listRowBackground(Color.clear)
                 }
                 ForEach(grupos) { grupo in
@@ -450,7 +529,12 @@ struct TodasTransacoesView: View {
                         ForEach(grupo.itens) { t in
                             HStack {
                                 VStack(alignment: .leading, spacing: 3) {
-                                    Text(t.titulo).font(.system(size: 14, weight: .semibold))
+                                    HStack(spacing: 5) {
+                                        Text(t.titulo).font(.system(size: 14, weight: .semibold))
+                                        if t.foto != nil {
+                                            Image(systemName: "paperclip").font(.system(size: 11)).foregroundStyle(.secondary)
+                                        }
+                                    }
                                     Text("\(t.data.formatted(.dateTime.hour(.twoDigits(amPM: .omitted)).minute(.twoDigits).locale(ptBR))) · \(t.categoria) · \(t.carteira)").font(.footnote).foregroundStyle(.secondary)
                                 }
                                 Spacer()
@@ -478,7 +562,7 @@ struct TodasTransacoesView: View {
             }
             .scrollContentBackground(.hidden)
             .background(Color.fundo)
-            .searchable(text: $busca, prompt: "Buscar")
+            .searchable(text: $busca, prompt: "Buscar por nome, categoria ou carteira")
             .safeAreaInset(edge: .bottom) {
                 BarraDesfazer().padding(.bottom, 8)
             }
@@ -489,6 +573,110 @@ struct TodasTransacoesView: View {
                 ToolbarItem(placement: .confirmationAction) { Button("OK") { dismiss() } }
             }
             .sheet(item: $editando) { t in RegistroSheet(editando: t) }
+            .sheet(isPresented: $editarValor) {
+                FiltroValorSheet(minimo: $minimoTexto, maximo: $maximoTexto)
+            }
         }
+    }
+
+    private var barraFiltros: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 8) {
+                Menu {
+                    Picker("Período", selection: $periodo) {
+                        ForEach(PeriodoFiltro.allCases) { Text($0.nome).tag($0) }
+                    }
+                } label: { chip(periodo == .tudo ? "Período" : periodo.nome, ativo: periodo != .tudo) }
+
+                Menu {
+                    Button("Todos") { tipo = nil }
+                    ForEach(TipoTransacao.allCases) { t in Button(t.nome) { tipo = t } }
+                } label: { chip(tipo?.nome ?? "Tipo", ativo: tipo != nil) }
+
+                Menu {
+                    Button("Todas") { categoria = nil }
+                    ForEach(Array(Set(categorias.map(\.nome) + transacoes.map(\.categoria))).sorted(), id: \.self) { c in
+                        Button(c) { categoria = c }
+                    }
+                } label: { chip(categoria ?? "Categoria", ativo: categoria != nil) }
+
+                Menu {
+                    Button("Todas") { carteira = nil }
+                    ForEach(carteiras) { c in Button(c.nome) { carteira = c.nome } }
+                } label: { chip(carteira ?? "Carteira", ativo: carteira != nil) }
+
+                Button { editarValor = true } label: {
+                    chip(textoValor, ativo: !minimoTexto.isEmpty || !maximoTexto.isEmpty)
+                }
+
+                Button { soComFoto.toggle() } label: { chip("Com foto", ativo: soComFoto) }
+
+                if temFiltro {
+                    Button {
+                        periodo = .tudo; tipo = nil; categoria = nil; carteira = nil
+                        minimoTexto = ""; maximoTexto = ""; soComFoto = false
+                    } label: {
+                        Label("Limpar", systemImage: "xmark.circle.fill")
+                            .font(.system(size: 13, weight: .semibold))
+                            .foregroundStyle(.red)
+                            .padding(.horizontal, 10)
+                    }
+                }
+            }
+            .buttonStyle(.plain)
+            .padding(.horizontal, 16)
+        }
+    }
+
+    private var textoValor: String {
+        let mi = lerValor(minimoTexto)
+        let ma = lerValor(maximoTexto)
+        switch (mi, ma) {
+        case let (a?, b?): return "\(a.moedaInteira) a \(b.moedaInteira)"
+        case let (a?, nil): return "Acima de \(a.moedaInteira)"
+        case let (nil, b?): return "Até \(b.moedaInteira)"
+        default: return "Valor"
+        }
+    }
+
+    private func chip(_ texto: String, ativo: Bool) -> some View {
+        HStack(spacing: 4) {
+            Text(texto).lineLimit(1)
+            Image(systemName: "chevron.down").font(.system(size: 9, weight: .bold))
+        }
+        .font(.system(size: 13, weight: .semibold))
+        .foregroundStyle(ativo ? Color.sobreDestaque : Color.primary)
+        .padding(.horizontal, 12)
+        .frame(height: 34)
+        .background(ativo ? Color.destaque : Color.cartao, in: Capsule())
+        .overlay(Capsule().stroke(Color.borda))
+    }
+}
+
+struct FiltroValorSheet: View {
+    @Binding var minimo: String
+    @Binding var maximo: String
+    @Environment(\.dismiss) private var dismiss
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            Text("Filtrar por valor").font(.system(size: 21, weight: .bold))
+            HStack(spacing: 10) {
+                Text("A partir de").foregroundStyle(.secondary)
+                TextField("0,00", text: $minimo).mascaraDinheiro($minimo).multilineTextAlignment(.trailing)
+            }
+            .campo()
+            HStack(spacing: 10) {
+                Text("Até").foregroundStyle(.secondary)
+                TextField("sem limite", text: $maximo).mascaraDinheiro($maximo).multilineTextAlignment(.trailing)
+            }
+            .campo()
+            Button("Aplicar") { dismiss() }.buttonStyle(EstiloPrincipal())
+            Button("Limpar valor") { minimo = ""; maximo = ""; dismiss() }
+                .frame(maxWidth: .infinity)
+                .foregroundStyle(.secondary)
+        }
+        .padding(28)
+        .folha([.height(400)])
     }
 }

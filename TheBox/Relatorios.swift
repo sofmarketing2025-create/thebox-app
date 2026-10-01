@@ -317,3 +317,67 @@ struct FechamentoMesView: View {
         }
     }
 }
+
+// MARK: - Tendências por categoria
+
+/// "Mercado caiu 15% em 3 meses": último mês fechado contra a média dos 3 anteriores
+struct CartaoTendencias: View {
+    let mes: Int
+    @Query private var transacoes: [Transacao]
+    @Query private var contas: [Conta]
+    @Query(sort: \Carteira.ordem) private var carteiras: [Carteira]
+
+    private struct Tendencia: Identifiable {
+        let nome: String
+        let antes: Double
+        let agora: Double
+        var id: String { nome }
+        var dif: Double { antes > 0 ? (agora - antes) / antes : 1 }
+    }
+
+    var body: some View {
+        let fin = Financas(transacoes: transacoes, contas: contas, carteiras: carteiras)
+        let base = mes >= Mes.indice() ? Mes.indice() - 1 : mes
+        let temHistorico = (1...3).contains { fin.temDados(em: base - $0) }
+        let atual = fin.gastoPorCategoria(em: base)
+        let anteriores = (1...3).map { fin.gastoPorCategoria(em: base - $0) }
+        let mesesComDados = max(1, (1...3).filter { fin.temDados(em: base - $0) }.count)
+        let nomes = Set(atual.keys).union(anteriores.flatMap(\.keys))
+        let lista = nomes.compactMap { n -> Tendencia? in
+            let media = anteriores.reduce(0) { $0 + ($1[n] ?? 0) } / Double(mesesComDados)
+            let agora = atual[n] ?? 0
+            guard max(media, agora) >= 20 else { return nil }
+            let t = Tendencia(nome: n, antes: media, agora: agora)
+            return abs(t.dif) >= 0.1 ? t : nil
+        }
+        .sorted { abs($0.dif) > abs($1.dif) }
+
+        VStack(alignment: .leading, spacing: 10) {
+            Label("TENDÊNCIAS POR CATEGORIA", systemImage: "chart.line.uptrend.xyaxis")
+                .font(.system(size: 12, weight: .semibold)).tracking(1.2).foregroundStyle(.secondary)
+            if !temHistorico {
+                Text("Aparece quando tiver pelo menos 2 meses de gastos registrados. Aí você vê, por exemplo, \"Mercado caiu 15% em 3 meses\".")
+                    .font(.system(size: 13)).foregroundStyle(.secondary)
+            } else if lista.isEmpty {
+                Text("Seus gastos em \(Mes.nome(base).lowercased()) ficaram parecidos com a média dos meses anteriores.")
+                    .font(.system(size: 13)).foregroundStyle(.secondary)
+            } else {
+                ForEach(lista.prefix(5)) { t in
+                    HStack(alignment: .top, spacing: 10) {
+                        Image(systemName: t.dif < 0 ? "arrow.down.right.circle.fill" : "arrow.up.right.circle.fill")
+                            .foregroundStyle(t.dif < 0 ? Color.green : Color.orange)
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("\(t.nome) \(t.dif < 0 ? "caiu" : "subiu") \(porcento(abs(t.dif)))")
+                                .font(.system(size: 14, weight: .semibold))
+                            Text("média de \(t.antes.moedaInteira) → \(t.agora.moedaInteira) em \(Mes.nome(base).lowercased())")
+                                .font(.system(size: 12)).foregroundStyle(.secondary)
+                        }
+                    }
+                }
+                Text("Comparando \(Mes.nome(base).lowercased()) com a média dos \(mesesComDados) meses anteriores.")
+                    .font(.system(size: 11)).foregroundStyle(.secondary)
+            }
+        }
+        .cartao(20)
+    }
+}

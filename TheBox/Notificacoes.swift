@@ -62,6 +62,7 @@ enum Notificacoes {
     /// Avisa quando a categoria ou o orçamento do mês passa de 30%, 50%, 80%, 90% ou 100%
     @MainActor
     static func verificarLimite(categoria: String, valor: Double, data: Date, ctx: ModelContext) {
+        verificarDiario(valor: valor, data: data, ctx: ctx)
         guard ligado("alertasInteligentes") else { return }
         let fin = Financas(transacoes: (try? ctx.fetch(FetchDescriptor<Transacao>())) ?? [],
                            contas: (try? ctx.fetch(FetchDescriptor<Conta>())) ?? [],

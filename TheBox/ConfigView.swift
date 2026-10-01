@@ -142,6 +142,8 @@ struct ConfigView: View {
                     LinhaConfig(titulo: "Moeda padrão", valor: "\(moeda) · \(Moeda.atual.simbolo)") { folha = .moeda }
                 }
 
+                SecaoOrcamentoDia()
+
                 Secao("Notificações") {
                     LinhaToggle(titulo: "Contas próximas do vencimento", ligado: $avisoContas)
                     if avisoContas {

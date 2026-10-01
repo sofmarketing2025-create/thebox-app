@@ -7,6 +7,19 @@ import UniformTypeIdentifiers
 
 /// Tira o texto de um comprovante (PDF ou imagem) pra depois o LeitorTexto achar valor e nome
 enum LeitorArquivo {
+    /// Imagem do comprovante pra guardar junto do gasto (1ª página, se for PDF)
+    static func foto(de arquivo: IntentFile) -> Data? {
+        let data = arquivo.data
+        if let img = UIImage(data: data) { return comprimirFoto(img) }
+        if let doc = PDFDocument(data: data), let pagina = doc.page(at: 0) {
+            let caixa = pagina.bounds(for: .mediaBox)
+            let escala = 1400 / max(caixa.width, caixa.height, 1)
+            let img = pagina.thumbnail(of: CGSize(width: caixa.width * escala, height: caixa.height * escala), for: .mediaBox)
+            return comprimirFoto(img)
+        }
+        return nil
+    }
+
     static func texto(de arquivo: IntentFile) async -> String {
         let data = arquivo.data
         let ehPDF = arquivo.type?.conforms(to: .pdf) == true || data.starts(with: [0x25, 0x50, 0x44, 0x46]) // "%PDF"

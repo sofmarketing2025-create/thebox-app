@@ -123,6 +123,8 @@ final class Transacao {
     var data: Date = Date.now
     /// Só pra transferência: true = entrou na conta (resgate, veio de outra conta sua); false = saiu
     var entrada: Bool = false
+    /// Foto do comprovante (opcional)
+    @Attribute(.externalStorage) var foto: Data? = nil
 
     init(tipo: TipoTransacao, valor: Double, categoria: String, carteira: String, descricao: String,
          data: Date = .now, entrada: Bool = false) {
@@ -164,8 +166,10 @@ final class Transacao {
 
     /// Cópia solta (ainda não salva), usada pra desfazer uma exclusão
     func copia() -> Transacao {
-        Transacao(tipo: tipo, valor: valor, categoria: categoria, carteira: carteira, descricao: descricao,
-                  data: data, entrada: entrada)
+        let c = Transacao(tipo: tipo, valor: valor, categoria: categoria, carteira: carteira, descricao: descricao,
+                          data: data, entrada: entrada)
+        c.foto = foto
+        return c
     }
 }
 

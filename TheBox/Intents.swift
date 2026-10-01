@@ -119,7 +119,7 @@ struct RegistrarComprovanteIntent: AppIntent {
             throw ErroAtalho(texto: "Entre no LBO Finanças primeiro.")
         }
         let texto = await LeitorArquivo.texto(de: arquivo)
-        try LeitorTexto.registrar(texto: texto, ctx: container.mainContext)
+        try LeitorTexto.registrar(texto: texto, ctx: container.mainContext, foto: LeitorArquivo.foto(de: arquivo))
         return .result()
     }
 }

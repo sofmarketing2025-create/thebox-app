@@ -22,6 +22,7 @@ struct RegistroSheet: View {
     @State private var confirmarExclusao = false
     @State private var entrada: Bool
     @State private var repetirReceita = false
+    @State private var foto: Data?
     @FocusState private var focoValor: Bool
     @FocusState private var focoDescricao: Bool
 
@@ -34,6 +35,7 @@ struct RegistroSheet: View {
         _descricao = State(initialValue: editando?.descricao ?? "")
         _data = State(initialValue: editando?.data ?? .now)
         _entrada = State(initialValue: editando?.entrada ?? false)
+        _foto = State(initialValue: editando?.foto)
     }
 
     private var valor: Double { Double(Int(digitos) ?? 0) / 100 }
@@ -75,6 +77,7 @@ struct RegistroSheet: View {
                         .focused($focoDescricao)
                         .submitLabel(.done)
                         .campo()
+                    CampoFoto(foto: $foto)
                     Button(editando == nil ? "Registrar" : "Salvar") { salvar() }
                         .buttonStyle(EstiloPrincipal(ativo: valido))
                         .disabled(!valido)
@@ -263,10 +266,13 @@ struct RegistroSheet: View {
             t.descricao = desc
             t.data = data
             t.entrada = tipo == .transferencia ? entrada : false
+            t.foto = foto
             try? ctx.save()
         } else {
-            ctx.insert(Transacao(tipo: tipo, valor: valor, categoria: categoria, carteira: tipo == .transferencia ? "" : cart,
-                                 descricao: desc, data: data, entrada: tipo == .transferencia ? entrada : false))
+            let nova = Transacao(tipo: tipo, valor: valor, categoria: categoria, carteira: tipo == .transferencia ? "" : cart,
+                                 descricao: desc, data: data, entrada: tipo == .transferencia ? entrada : false)
+            nova.foto = foto
+            ctx.insert(nova)
             if tipo == .receita && repetirReceita {
                 ctx.insert(Recorrencia(nome: desc.isEmpty ? categoria : desc, valor: valor,
                                        dia: Calendar.current.component(.day, from: data),
