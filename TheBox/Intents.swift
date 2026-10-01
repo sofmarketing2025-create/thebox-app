@@ -167,8 +167,9 @@ struct GasteiIntent: AppIntent {
     static var description = IntentDescription("Registra um gasto falando com a Siri: ela pergunta quanto foi e onde.")
     static var openAppWhenRun: Bool = false
 
+    /// Texto livre ("25 reais", "vinte e cinco e cinquenta"): a Siri entrega a frase e o app entende o valor
     @Parameter(title: "Valor", requestValueDialog: IntentDialog("Quanto você gastou?"))
-    var valor: Double
+    var valor: String
 
     @Parameter(title: "Onde foi", requestValueDialog: IntentDialog("Onde foi?"))
     var onde: String
@@ -187,7 +188,10 @@ struct GasteiIntent: AppIntent {
         let cat = Categorizador.categoria(para: desc, ctx: ctx)
         let carteiras = (try? ctx.fetch(FetchDescriptor<Carteira>(sortBy: [SortDescriptor(\.ordem)]))) ?? []
         let cart = carteiras.first { $0.tipo == .dinheiro }?.nome ?? carteiras.first { $0.tipo == .pix }?.nome ?? ""
-        let v = abs(valor)
+        guard let lido = LeitorFala.valor(valor), lido > 0 else {
+            throw ErroAtalho(texto: "Não entendi o valor. Diga só o número, por exemplo: vinte e cinco, ou doze e noventa.")
+        }
+        let v = abs(lido)
         ctx.insert(Transacao(tipo: .gasto, valor: v, categoria: cat, carteira: cart, descricao: desc))
         try ctx.save()
         Notificacoes.verificarLimite(categoria: cat, valor: v, data: .now, ctx: ctx)
