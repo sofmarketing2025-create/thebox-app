@@ -41,6 +41,7 @@ struct HomeView: View {
 
                 CartaoSaldo(saldo: fin.saldoPrevisto(em: mes), saldoHoje: fin.saldo(em: mes),
                             aPagar: fin.contasAPagar(em: mes) + fin.faturasAPagar(em: mes),
+                            mesAtual: mes == Mes.indice(),
                             progresso: limite > 0 ? gasto / limite : 0,
                             ocultar: $ocultar) { detalhes = true }
 
@@ -228,6 +229,8 @@ struct CartaoSaldo: View {
     let saldo: Double
     let saldoHoje: Double
     let aPagar: Double
+    /// No mês atual o número grande é o que está na conta hoje (igual ao banco)
+    var mesAtual = true
     let progresso: Double
     @Binding var ocultar: Bool
     var detalhes: () -> Void
@@ -236,22 +239,25 @@ struct CartaoSaldo: View {
         VStack(spacing: -20) {
             VStack(alignment: .leading, spacing: 10) {
                 HStack {
-                    Text("Saldo").font(.system(size: 15)).foregroundStyle(.secondary)
+                    Text(mesAtual ? "Na conta hoje" : "Sobra prevista no mês").font(.system(size: 15)).foregroundStyle(.secondary)
                     Spacer()
                     Button { withAnimation { ocultar.toggle() } } label: {
                         Image(systemName: ocultar ? "eye.slash" : "eye").foregroundStyle(.secondary)
                     }
                     .buttonStyle(.plain)
                 }
-                Text(ocultar ? "\(Moeda.atual.simbolo) ••••••" : saldo.moeda)
+                let principal = mesAtual ? saldoHoje : saldo
+                Text(ocultar ? "\(Moeda.atual.simbolo) ••••••" : principal.moeda)
                     .font(.system(size: 32, weight: .heavy)).tracking(-1.2)
-                    .foregroundStyle(saldo < 0 && !ocultar ? Color.red : Color.primary)
+                    .foregroundStyle(principal < 0 && !ocultar ? Color.red : Color.primary)
                     .lineLimit(1).minimumScaleFactor(0.5)
                 if aPagar > 0 && !ocultar {
-                    Text("Hoje: \(saldoHoje.moeda) · faltam \(aPagar.moeda) em contas")
+                    Text(mesAtual
+                         ? "Faltam \(aPagar.moeda) em contas: \(saldo >= 0 ? "sobra" : "falta") \(abs(saldo).moeda) no fim do mês"
+                         : "Contas do mês: \(aPagar.moeda)")
                         .font(.system(size: 13))
-                        .foregroundStyle(.secondary)
-                        .lineLimit(1).minimumScaleFactor(0.8)
+                        .foregroundStyle(mesAtual && saldo < 0 ? Color.red : Color.secondary)
+                        .lineLimit(2).minimumScaleFactor(0.8)
                 }
                 BarraProgresso(p: progresso, cor: corPorcentagem(progresso), altura: 5)
                     .padding(.top, 10)
