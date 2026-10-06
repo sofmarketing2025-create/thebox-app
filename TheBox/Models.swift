@@ -367,10 +367,29 @@ struct Financas {
         recorrencias.filter { $0.ativa && m > $0.ultimoMes }.reduce(0) { $0 + $1.valor }
     }
 
-    /// Saldo de hoje: só o que já entrou e já foi pago
-    func saldo(em m: Int) -> Double {
+    /// O que entrou e saiu da conta só dentro do mês m
+    func movimento(em m: Int) -> Double {
         receitas(em: m) - gastosAvulsos(em: m) - contasPagasFora(em: m) - faturasPagas(em: m)
             + transferenciasLiquidas(em: m)
+    }
+
+    /// Dinheiro que veio do mês anterior (igual ao banco: o que sobra continua na conta).
+    /// Meses passados: o que de fato aconteceu. Meses futuros: a sobra prevista do mês anterior.
+    func abertura(em m: Int) -> Double {
+        let hoje = Mes.indice()
+        if m > hoje { return saldoPrevisto(em: m - 1) }
+        guard let primeiro = transacoes.map(\.mes).min(), primeiro < m else { return 0 }
+        return (primeiro..<m).reduce(0) { $0 + movimento(em: $1) }
+    }
+
+    /// Saldo de hoje: o que veio do mês anterior + o que já entrou e já foi pago no mês
+    func saldo(em m: Int) -> Double {
+        abertura(em: m) + movimento(em: m)
+    }
+
+    /// Soma dos ajustes de saldo do mês (+ entrou, - saiu)
+    func ajustes(em m: Int) -> Double {
+        transacoes(em: m).filter(\.ehAjuste).reduce(0) { $0 + ($1.tipo == .receita ? $1.valor : -$1.valor) }
     }
 
     /// Contas do mês que ainda não foram marcadas como pagas

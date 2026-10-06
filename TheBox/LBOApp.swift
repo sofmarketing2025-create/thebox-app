@@ -160,6 +160,7 @@ struct UsuarioView: View {
                 _ = await Notificacoes.pedirPermissao()
             }
             Recorrencias.gerar(ctx)
+            Migracao.saldoAcumulado(ctx)
             Notificacoes.reagendar(ctx)
             if estado.bloqueado && faceID { desbloquear() }
             // iPhone novo (sem nada salvo): traz os dados do backup na nuvem

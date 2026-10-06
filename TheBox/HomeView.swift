@@ -130,7 +130,7 @@ struct CartaoHoje: View {
         let gastoHoje = fin.transacoes(em: mes).filter { $0.tipo == .gasto && !$0.ehAjuste && cal.isDateInToday($0.data) }
             .reduce(0) { $0 + $1.valor }
         let limite = fin.limite(em: mes)
-        let temRenda = fin.receitas(em: mes) + fin.receitasAReceber(em: mes) > 0
+        let temRenda = fin.receitas(em: mes) + fin.receitasAReceber(em: mes) > 0 || fin.abertura(em: mes) > 0
         let porLimite = limite - fin.gastoTotal(em: mes) - fin.contasAPagar(em: mes)
         let previsto = fin.saldoPrevisto(em: mes)
         // o que ainda dá pra gastar até o fim do mês (somando de volta o que já saiu hoje)
@@ -351,6 +351,9 @@ struct DetalhesSaldoView: View {
                     let ajustes = fin.transacoes(em: mes).filter(\.ehAjuste)
                     let ajusteEntrada = ajustes.filter { $0.tipo == .receita }.reduce(0) { $0 + $1.valor }
                     let ajusteSaida = ajustes.filter { $0.tipo == .gasto }.reduce(0) { $0 + $1.valor }
+                    let veio = fin.abertura(em: mes)
+                    LinhaStat(titulo: "Veio de \(Mes.nome(mes - 1).lowercased())", valor: (veio < 0 ? "-" : "") + abs(veio).moeda)
+                    Divider().overlay(Color.borda)
                     LinhaStat(titulo: "Receitas", valor: (fin.receitas(em: mes) - ajusteEntrada).moeda)
                     Divider().overlay(Color.borda)
                     LinhaStat(titulo: "Gastos", valor: "-" + (fin.gastosAvulsos(em: mes) - ajusteSaida).moeda)
@@ -407,15 +410,20 @@ struct DetalhesSaldoView: View {
         }
         .folha([.large])
         .sheet(isPresented: $ajustando) {
-            let atual = Financas(transacoes: transacoes, contas: contas, carteiras: carteiras).saldo(em: mes)
+            let f = Financas(transacoes: transacoes, contas: contas, carteiras: carteiras)
+            let atual = f.saldo(em: mes)
             EditarValorSheet(titulo: "Saldo no banco agora",
                              subtitulo: "Hoje o app mostra \(atual.moeda). Quanto tem na sua conta?",
                              valor: max(atual, 0)) { real in
-                let diferenca = real - atual
-                guard abs(diferenca) >= 0.01 else { return }
-                ctx.insert(Transacao(tipo: diferenca > 0 ? .receita : .gasto, valor: abs(diferenca),
-                                     categoria: Transacao.categoriaAjuste, carteira: "",
-                                     descricao: "Ajuste de saldo"))
+                // troca os ajustes antigos do mês por um só, com a diferença certa
+                let semAjuste = atual - f.ajustes(em: mes)
+                for t in f.transacoes(em: mes) where t.ehAjuste { ctx.delete(t) }
+                let diferenca = real - semAjuste
+                if abs(diferenca) >= 0.01 {
+                    ctx.insert(Transacao(tipo: diferenca > 0 ? .receita : .gasto, valor: abs(diferenca),
+                                         categoria: Transacao.categoriaAjuste, carteira: "",
+                                         descricao: "Ajuste de saldo"))
+                }
                 try? ctx.save()
                 Notificacoes.agora("Saldo ajustado", "Agora o app mostra \(real.moeda), igual ao banco.")
             }
