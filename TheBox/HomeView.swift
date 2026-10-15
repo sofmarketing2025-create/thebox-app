@@ -391,6 +391,45 @@ struct DetalhesSaldoView: View {
                 .padding(.vertical, 6)
                 .background(Color.cartao2.opacity(0.45), in: RoundedRectangle(cornerRadius: 22, style: .continuous))
 
+                let pendentes = fin.contasDoMes(mes).filter { !$0.pago(em: mes) }
+                let faturas = fin.cartoes().filter { !$0.faturaPaga(em: mes) && fin.fatura($0, em: mes) > 0 }
+                if !pendentes.isEmpty || !faturas.isEmpty {
+                    Text("O que falta pagar em \(Mes.nome(mes).lowercased())").font(.system(size: 15, weight: .semibold)).padding(.top, 6)
+                    VStack(spacing: 0) {
+                        ForEach(pendentes) { c in
+                            HStack {
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text(c.parcela(em: mes).map { "\(c.nome) (\($0))" } ?? c.nome).font(.system(size: 15))
+                                    Text(c.atrasada(em: mes) ? "venceu dia \(c.dia)" : "vence dia \(c.dia)")
+                                        .font(.system(size: 12))
+                                        .foregroundStyle(c.atrasada(em: mes) ? Color.red : Color.secondary)
+                                }
+                                Spacer()
+                                Text(c.valor.moeda).fontWeight(.semibold)
+                            }
+                            .padding(.vertical, 10)
+                            Divider().overlay(Color.borda)
+                        }
+                        ForEach(faturas) { c in
+                            HStack {
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text("Fatura \(c.nome)").font(.system(size: 15))
+                                    Text("vence dia \(c.diaVencimento)").font(.system(size: 12)).foregroundStyle(.secondary)
+                                }
+                                Spacer()
+                                Text(fin.fatura(c, em: mes).moeda).fontWeight(.semibold)
+                            }
+                            .padding(.vertical, 10)
+                            Divider().overlay(Color.borda)
+                        }
+                    }
+                    .padding(.horizontal, 20)
+                    .padding(.vertical, 6)
+                    .background(Color.cartao2.opacity(0.45), in: RoundedRectangle(cornerRadius: 22, style: .continuous))
+                    Text("Já pagou alguma? Marque como paga na aba Contas e ela sai daqui.")
+                        .font(.footnote).foregroundStyle(.secondary)
+                }
+
                 if mes == Mes.indice() {
                     let contasBanco = carteiras.filter { $0.tipo != .credito }
                     let porConta = contasBanco.map { ItemValor(nome: $0.nome, valor: fin.saldoCarteira($0.nome, ate: mes)) }
