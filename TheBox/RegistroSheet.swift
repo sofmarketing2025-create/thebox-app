@@ -10,6 +10,8 @@ struct RegistroSheet: View {
     @Query private var transacoes: [Transacao]
     @Query private var contas: [Conta]
     @Query(sort: \Caixinha.ordem) private var caixinhas: [Caixinha]
+    @Query private var limites: [LimiteMensal]
+    @State private var avisoEstouro = false
 
     let editando: Transacao?
     @State private var tipo: TipoTransacao
@@ -48,6 +50,22 @@ struct RegistroSheet: View {
     private var opcoesAtuais: [String] { tipo == .transferencia ? destinos : cats.map(\.nome) }
     private var valido: Bool { valor > 0 && categoria != nil }
 
+    /// Quanto esse gasto passa do orçamento do dia/semana (ou do mês, se não tiver um do dia a dia)
+    private var estouro: (excesso: Double, nome: String)? {
+        guard tipo == .gasto, valor > 0, categoria != Transacao.categoriaAjuste else { return nil }
+        let outras = transacoes.filter { $0.chave != editando?.chave }
+        if let s = OrcamentoDia.situacao(em: data, transacoes: outras) {
+            let excesso = s.gasto + valor - s.limite
+            return excesso > 0.009 ? (excesso, s.nome) : nil
+        }
+        let fin = Financas(transacoes: outras, contas: contas, carteiras: carteiras, limites: limites)
+        let m = Mes.indice(data)
+        let lim = fin.limite(em: m)
+        guard lim > 0 else { return nil }
+        let excesso = fin.gastoTotal(em: m) + valor - lim
+        return excesso > 0.009 ? (excesso, "do mês") : nil
+    }
+
     var body: some View {
         NavigationStack {
             ScrollView {
@@ -66,6 +84,11 @@ struct RegistroSheet: View {
                         gradeCategorias
                     }
                     if tipo == .gasto { impacto }
+                    if let e = estouro {
+                        Label("Isso passa do seu orçamento \(e.nome) em \(e.excesso.moeda).", systemImage: "exclamationmark.triangle.fill")
+                            .font(.system(size: 13, weight: .semibold))
+                            .foregroundStyle(.orange)
+                    }
                     if tipo != .transferencia { pagamentos }
                     if tipo == .receita && editando == nil {
                         LinhaToggle(titulo: "Repete todo mês",
@@ -78,7 +101,9 @@ struct RegistroSheet: View {
                         .submitLabel(.done)
                         .campo()
                     CampoFoto(foto: $foto)
-                    Button(editando == nil ? "Registrar" : "Salvar") { salvar() }
+                    Button(editando == nil ? "Registrar" : "Salvar") {
+                        if editando == nil && estouro != nil { avisoEstouro = true } else { salvar() }
+                    }
                         .buttonStyle(EstiloPrincipal(ativo: valido))
                         .disabled(!valido)
                     if editando != nil {
@@ -118,6 +143,13 @@ struct RegistroSheet: View {
             if editando == nil {
                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) { focoValor = true }
             }
+        }
+        .confirmationDialog("Passa do orçamento \(estouro?.nome ?? "") em \(estouro?.excesso.moeda ?? "")",
+                            isPresented: $avisoEstouro, titleVisibility: .visible) {
+            Button("Registrar mesmo assim") { salvar() }
+            Button("Cancelar", role: .cancel) {}
+        } message: {
+            Text("Vale a pena? Se não for essencial, dá pra deixar pra depois.")
         }
         .confirmationDialog("Excluir esta transação?", isPresented: $confirmarExclusao, titleVisibility: .visible) {
             Button("Excluir", role: .destructive) {

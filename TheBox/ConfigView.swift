@@ -4,7 +4,7 @@ import UniformTypeIdentifiers
 
 struct ConfigView: View {
     enum Folha: String, Identifiable {
-        case nome, tema, catGasto, catReceita, carteiras, moeda, toqueDuplo, maquininha, pix, fixas
+        case nome, tema, catGasto, catReceita, carteiras, moeda, toqueDuplo, maquininha, pix, fixas, widget
         var id: String { rawValue }
     }
 
@@ -19,6 +19,7 @@ struct ConfigView: View {
     @AppStorage("moeda") private var moeda = "BRL"
     @AppStorage("avisoContas") private var avisoContas = true
     @AppStorage("lembreteRegistro") private var lembreteRegistro = true
+    @AppStorage("horaLembrete") private var horaLembrete = 20
     @AppStorage("resumoSemana") private var resumoSemana = true
     @AppStorage("alertasInteligentes") private var alertas = true
     @AppStorage("faceID") private var faceID = false
@@ -76,6 +77,7 @@ struct ConfigView: View {
         .background(Color.fundo)
         .onChange(of: avisoContas) { _, _ in Notificacoes.reagendar(ctx) }
         .onChange(of: lembreteRegistro) { _, _ in Notificacoes.reagendar(ctx) }
+        .onChange(of: horaLembrete) { _, _ in Notificacoes.reagendar(ctx) }
         .onChange(of: resumoSemana) { _, _ in Notificacoes.reagendar(ctx) }
         .onChange(of: faceID) { _, ligado in
             if ligado {
@@ -93,6 +95,7 @@ struct ConfigView: View {
             case .toqueDuplo: GuiaView(guia: .toqueDuplo)
             case .maquininha: GuiaView(guia: .maquininha)
             case .pix: GuiaView(guia: .pix)
+            case .widget: GuiaView(guia: .widget)
             case .fixas: ReceitasFixasSheet()
             }
         }
@@ -151,7 +154,13 @@ struct ConfigView: View {
                             .padding(.bottom, 12)
                     }
                     Divisor()
-                    LinhaToggle(titulo: "Lembretes de registro", ligado: $lembreteRegistro)
+                    LinhaToggle(titulo: "Lembrete da noite", sub: "Mostra o que você registrou no dia e pergunta se faltou algo", ligado: $lembreteRegistro)
+                    if lembreteRegistro {
+                        Stepper(value: $horaLembrete, in: 6...23) {
+                            Text("Horário: \(horaLembrete)h").font(.system(size: 15))
+                        }
+                        .padding(.bottom, 10)
+                    }
                     Divisor()
                     LinhaToggle(titulo: "Resumo da semana", ligado: $resumoSemana)
                     Divisor()
@@ -173,10 +182,16 @@ struct ConfigView: View {
                     LinhaConfig(titulo: "Registrar pela maquininha", icone: "wave.3.right") { folha = .maquininha }
                     Divisor()
                     LinhaConfig(titulo: "Pix pelo e-mail ou SMS do banco", icone: "envelope") { folha = .pix }
+                    Divisor()
+                    LinhaConfig(titulo: "Widget \"Quanto posso gastar\"", icone: "square.grid.2x2") { folha = .widget }
                 }
 
                 Secao("Dados") {
-                    LinhaConfig(titulo: "Exportar transações (CSV)", icone: "square.and.arrow.up") {
+                    LinhaConfig(titulo: "Relatório do mês (PDF)", icone: "doc.richtext") {
+                        if let url = RelatorioPDF.gerar(mes: Mes.indice(), ctx: ctx) { exportar = ArquivoExportado(url: url) }
+                    }
+                    Divisor()
+                    LinhaConfig(titulo: "Exportar pro Excel (CSV)", icone: "square.and.arrow.up") {
                         if let url = CSV.gerar(transacoes) { exportar = ArquivoExportado(url: url) }
                     }
                     Divisor()
@@ -795,7 +810,7 @@ struct NovaCarteiraSheet: View {
 // MARK: - Guias de automação
 
 struct GuiaView: View {
-    enum Guia { case toqueDuplo, maquininha, pix }
+    enum Guia { case toqueDuplo, maquininha, pix, widget }
     let guia: Guia
     @Environment(\.dismiss) private var dismiss
 
@@ -804,6 +819,7 @@ struct GuiaView: View {
         case .toqueDuplo: return "Toque duplo nas costas"
         case .maquininha: return "Registrar pela maquininha"
         case .pix: return "Pix pelo e-mail ou SMS"
+        case .widget: return "Widget \"Quanto posso gastar\""
         }
     }
     private var passos: [String] {
@@ -832,6 +848,17 @@ struct GuiaView: View {
                 "Toque no (i) do atalho e ligue \"Mostrar ao Compartilhar\"; em Tipos, deixe só Imagens e PDFs.",
                 "Adicione só a ação \"Registrar comprovante\" do LBO Finanças, com Comprovante = Entrada do Atalho. Ela lê PDF e imagem sozinha.",
                 "Depois de um Pix, toque em Compartilhar comprovante → Registrar comprovante. Pronto."
+            ]
+        case .widget:
+            return [
+                "Abra o app Atalhos e toque em + pra criar um atalho novo.",
+                "Toque em \"Adicionar Ação\", procure \"Quanto posso gastar hoje\" (LBO Finanças) e adicione.",
+                "Dê o nome \"Quanto posso gastar\" e salve.",
+                "Na tela inicial do iPhone, toque e segure num espaço vazio até os ícones tremerem.",
+                "Toque em Editar (canto de cima) → Adicionar Widget, procure \"Atalhos\" e escolha o tamanho pequeno.",
+                "Toque no widget novo e, em Atalho, escolha \"Quanto posso gastar\".",
+                "Pronto: um toque no widget mostra quanto ainda dá pra gastar hoje, o orçamento da semana e o saldo, sem abrir o app.",
+                "Também funciona pela Siri: \"E aí Siri, quanto posso gastar no LBO Finanças\"."
             ]
         case .maquininha:
             return [

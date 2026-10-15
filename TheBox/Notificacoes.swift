@@ -122,7 +122,8 @@ enum Notificacoes {
             for i in hoje...(hoje + meses) {
                 var itens: [(nome: String, valor: Double, venc: Date, fatura: Bool, info: [String: String])] = []
                 for conta in contas where conta.ocorre(em: i) && !conta.pago(em: i) {
-                    itens.append((conta.nome, conta.valor, conta.vencimento(em: i, hora: hora), false,
+                    let nome = conta.parcela(em: i).map { "\(conta.nome) (\($0))" } ?? conta.nome
+                    itens.append((nome, conta.valor, conta.vencimento(em: i, hora: hora), false,
                                   ["conta": conta.chave.uuidString, "mes": String(i)]))
                 }
                 for cartao in fin.cartoes() where !cartao.faturaPaga(em: i) {
@@ -134,8 +135,15 @@ enum Notificacoes {
                 }
                 for item in itens {
                     let titulo = item.fatura ? "Fatura chegando" : item.nome
-                    avisos.append(Aviso(quando: item.venc, titulo: titulo, corpo: "\(item.valor.moeda) vence hoje.",
+                    avisos.append(Aviso(quando: item.venc, titulo: item.fatura ? "\(item.nome) vence hoje" : "\(item.nome) vence hoje",
+                                        corpo: "\(item.valor.moeda). Já pagou? Toque e segure pra marcar como paga.",
                                         info: item.info, categoria: "conta"))
+                    // não marcou como paga: avisa no dia seguinte
+                    if let depois = cal.date(byAdding: .day, value: 1, to: item.venc) {
+                        avisos.append(Aviso(quando: depois, titulo: "\(item.nome) venceu ontem",
+                                            corpo: "\(item.valor.moeda) ainda não foi marcada como paga. Se já pagou, toque em Paguei.",
+                                            info: item.info, categoria: "conta"))
+                    }
                     for antes in dias {
                         guard let antecipado = cal.date(byAdding: .day, value: -antes, to: item.venc) else { continue }
                         let quando = antes == 1 ? "amanhã" : "em \(antes) dias"
@@ -181,27 +189,44 @@ enum Notificacoes {
             }
         }
 
+        // Lembrete da noite: hoje com o resumo do dia, nos próximos dias genérico
+        if ligado("lembreteRegistro") {
+            let horaLembrete = d.object(forKey: "horaLembrete") as? Int ?? 20
+            let gastosHoje = transacoes.filter { $0.tipo == .gasto && !$0.ehAjuste && cal.isDateInToday($0.data) }
+            let totalHoje = gastosHoje.reduce(0) { $0 + $1.valor }
+            for dia in 0..<7 {
+                guard let base = cal.date(byAdding: .day, value: dia, to: agora),
+                      let quando = cal.date(bySettingHour: horaLembrete, minute: 0, second: 0, of: base) else { continue }
+                var corpo = "Gastou algo hoje? Toque pra registrar em dois segundos."
+                if dia == 0 {
+                    corpo = gastosHoje.isEmpty
+                        ? "Você ainda não registrou nenhum gasto hoje. Gastou algo? Toque pra registrar."
+                        : "Hoje: \(gastosHoje.count) \(gastosHoje.count == 1 ? "gasto" : "gastos"), \(totalHoje.moeda). Faltou algum? Toque pra registrar."
+                    if let s = OrcamentoDia.situacao(em: agora, transacoes: transacoes) {
+                        let resta = s.limite - s.gasto
+                        corpo += resta >= 0 ? " Resta \(resta.moeda) do orçamento \(s.nome)." : " Passou \(abs(resta).moeda) do orçamento \(s.nome)."
+                    }
+                }
+                avisos.append(Aviso(quando: quando, titulo: "Registrou tudo hoje?", corpo: corpo,
+                                    info: ["abrir": "registro"], categoria: "lembrete"))
+            }
+        }
+
         for aviso in avisos.filter({ $0.quando > agora }).sorted(by: { $0.quando < $1.quando }).prefix(58) {
             let c = UNMutableNotificationContent()
             c.title = aviso.titulo
             c.body = aviso.corpo
             c.sound = .default
-            c.userInfo = aviso.info
+            var info = aviso.info
+            info["titulo"] = aviso.titulo
+            info["corpo"] = aviso.corpo
+            c.userInfo = info
             if let cat = aviso.categoria { c.categoryIdentifier = cat }
             let comps = cal.dateComponents([.year, .month, .day, .hour, .minute], from: aviso.quando)
             center.add(UNNotificationRequest(identifier: UUID().uuidString, content: c,
                                              trigger: UNCalendarNotificationTrigger(dateMatching: comps, repeats: false)))
         }
 
-        if ligado("lembreteRegistro") {
-            let c = UNMutableNotificationContent()
-            c.title = "Registrou seus gastos de hoje?"
-            c.body = "Leva dois segundos: toque duas vezes nas costas do iPhone ou diga \"E aí Siri, gastei no LBO Finanças\"."
-            c.sound = .default
-            center.add(UNNotificationRequest(identifier: "lembrete-diario", content: c,
-                                             trigger: UNCalendarNotificationTrigger(dateMatching: DateComponents(hour: 20, minute: 30),
-                                                                                    repeats: true)))
-        }
     }
 
     struct Aviso {
@@ -215,14 +240,33 @@ enum Notificacoes {
     /// Botão "Paguei" nos avisos de conta e fatura
     static func registrarCategorias() {
         let paguei = UNNotificationAction(identifier: "paguei", title: "Paguei", options: [])
-        let conta = UNNotificationCategory(identifier: "conta", actions: [paguei], intentIdentifiers: [], options: [])
-        UNUserNotificationCenter.current().setNotificationCategories([conta])
+        let amanha = UNNotificationAction(identifier: "amanha", title: "Lembrar amanhã", options: [])
+        let conta = UNNotificationCategory(identifier: "conta", actions: [paguei, amanha], intentIdentifiers: [], options: [])
+        let registrar = UNNotificationAction(identifier: "registrar", title: "Registrar agora", options: [.foreground])
+        let lembrete = UNNotificationCategory(identifier: "lembrete", actions: [registrar], intentIdentifiers: [], options: [])
+        UNUserNotificationCenter.current().setNotificationCategories([conta, lembrete])
     }
 
     /// Toque no aviso ou no botão "Paguei"
     @MainActor
     static func tratar(acao: String, info: [AnyHashable: Any]) {
         let mes = (info["mes"] as? String).flatMap { Int($0) }
+        if acao == "amanha" {
+            let c = UNMutableNotificationContent()
+            c.title = info["titulo"] as? String ?? "Conta pra pagar"
+            c.body = info["corpo"] as? String ?? ""
+            c.sound = .default
+            c.userInfo = info
+            c.categoryIdentifier = "conta"
+            UNUserNotificationCenter.current().add(UNNotificationRequest(
+                identifier: UUID().uuidString, content: c,
+                trigger: UNTimeIntervalNotificationTrigger(timeInterval: 24 * 3600, repeats: false)))
+            return
+        }
+        if acao == "registrar" {
+            AppState.shared.abrirRegistro = true
+            return
+        }
         if acao == "paguei", let container = Store.atual, let mes {
             let ctx = container.mainContext
             if let id = (info["conta"] as? String).flatMap(UUID.init(uuidString:)),
@@ -244,6 +288,7 @@ enum Notificacoes {
         }
         switch info["abrir"] as? String {
         case "revisao": AppState.shared.abrirRevisao = true
+        case "registro": AppState.shared.abrirRegistro = true
         case "fechamento": AppState.shared.abrirFechamento = mes ?? (Mes.indice() - 1)
         default: break
         }

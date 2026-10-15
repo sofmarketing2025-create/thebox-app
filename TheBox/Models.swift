@@ -387,9 +387,43 @@ struct Financas {
         abertura(em: m) + movimento(em: m)
     }
 
-    /// Soma dos ajustes de saldo do mês (+ entrou, - saiu)
-    func ajustes(em m: Int) -> Double {
-        transacoes(em: m).filter(\.ehAjuste).reduce(0) { $0 + ($1.tipo == .receita ? $1.valor : -$1.valor) }
+    /// Soma dos ajustes de saldo do mês (+ entrou, - saiu). Com `carteira`, só os ajustes daquela conta.
+    func ajustes(em m: Int, carteira: String? = nil) -> Double {
+        transacoes(em: m).filter { $0.ehAjuste && (carteira == nil || $0.carteira == carteira) }
+            .reduce(0) { $0 + ($1.tipo == .receita ? $1.valor : -$1.valor) }
+    }
+
+    /// Saldo de uma conta (carteira) até o fim do mês m: tudo que foi registrado entrando ou saindo dela
+    func saldoCarteira(_ nome: String, ate m: Int) -> Double {
+        let mov = transacoes.filter { $0.carteira == nome && $0.mes <= m }.reduce(0.0) { soma, t in
+            switch t.tipo {
+            case .receita: return soma + t.valor
+            case .gasto: return cartaoComFatura(t) == nil ? soma - t.valor : soma
+            case .transferencia: return soma + t.efeitoNoSaldo
+            }
+        }
+        guard let primeiro = transacoes.map(\.mes).min(), primeiro <= m else { return mov }
+        let pagas = (primeiro...m).reduce(0.0) { s, i in
+            s + contasPagas(em: i).filter { $0.pagamento(em: i) == nome }.reduce(0) { $0 + $1.valor }
+        }
+        return mov - pagas
+    }
+
+    /// "Pode gastar hoje": o que sobra até o fim do mês dividido pelos dias que faltam
+    func podeGastarHoje() -> (resta: Double, porDia: Double, temBase: Bool) {
+        let mes = Mes.indice()
+        let cal = Calendar.current
+        let diasNoMes = cal.range(of: .day, in: .month, for: .now)?.count ?? 30
+        let dias = max(1, diasNoMes - cal.component(.day, from: .now) + 1)
+        let gastoHoje = transacoes(em: mes).filter { $0.tipo == .gasto && !$0.ehAjuste && cal.isDateInToday($0.data) }
+            .reduce(0) { $0 + $1.valor }
+        let lim = limite(em: mes)
+        let porLimite = lim - gastoTotal(em: mes) - contasAPagar(em: mes)
+        let previsto = saldoPrevisto(em: mes)
+        let disponivel = (lim > 0 ? min(porLimite, previsto) : previsto) + gastoHoje
+        let porDia = max(0, disponivel) / Double(dias)
+        let temBase = receitas(em: mes) + receitasAReceber(em: mes) > 0 || abertura(em: mes) > 0
+        return (porDia - gastoHoje, porDia, temBase)
     }
 
     /// Contas do mês que ainda não foram marcadas como pagas

@@ -122,6 +122,15 @@ enum PlanoCalculo {
         return (fimPor.values.max() ?? hoje, fimPor)
     }
 
+    /// Quanto já foi pago das dívidas que ainda estão correndo
+    /// (parcelas de antes de cadastrar + meses marcados como pagos + adiantadas)
+    static func jaPago(_ contas: [Conta], hoje: Int) -> Double {
+        contas.filter { temFim($0) && ultimoMes($0) >= hoje }.reduce(0) { soma, c in
+            let antes = c.parcelada ? Double(max(c.parcelaAtual, 1) - 1) : 0
+            return soma + (antes + Double(c.pagamentos.count + c.adiantadas)) * c.valor
+        }
+    }
+
     /// Quanto custa atrasar a próxima parcela: juros da conta (ou 1% a.m. estimado) + multa de 2%
     static func custoAtraso(_ d: Divida) -> (valor: Double, estimado: Bool) {
         let parcela = d.proxima?.valor ?? 0
@@ -234,7 +243,9 @@ struct PlanoQuitacaoView: View {
                           texto: "Contas parceladas ou únicas deste mês em diante aparecem aqui. As que repetem todo mês ficam em Cobranças fixas.")
                         .cartao(18)
                 } else {
-                    resumo(total: totalDevido, parcelas: dividas.reduce(0) { $0 + $1.restantes }, fim: fimNatural)
+                    resumo(total: totalDevido, pago: PlanoCalculo.jaPago(contas, hoje: hoje),
+                           parcelas: dividas.reduce(0) { $0 + $1.restantes }, fim: fimNatural, dividas: dividas)
+                    dinheiroExtra(fin: fin, ordem: ordem, hoje: hoje, media: mediaGastos)
                     graficoDivida(hoje: hoje, fim: fimNatural)
                 }
                 cartaoSobra(renda: renda, registrada: rendaManual == 0 && registrada > 0,
@@ -282,14 +293,75 @@ struct PlanoQuitacaoView: View {
 
     // MARK: Partes
 
-    private func resumo(total: Double, parcelas: Int, fim: Int) -> some View {
-        VStack(alignment: .leading, spacing: 6) {
+    private func resumo(total: Double, pago: Double, parcelas: Int, fim: Int, dividas: [Divida]) -> some View {
+        let p = pago + total > 0 ? pago / (pago + total) : 0
+        let cal = Calendar.current
+        let ultimaData = dividas.compactMap { d in d.ultima.map { $0.conta.vencimento(em: $0.mes) } }.max()
+            ?? Mes.data(fim, dia: 28)
+        let dias = max(0, cal.dateComponents([.day], from: cal.startOfDay(for: .now), to: ultimaData).day ?? 0)
+        return VStack(alignment: .leading, spacing: 8) {
             Text("VOCÊ AINDA DEVE").font(.system(size: 12, weight: .semibold)).tracking(1.5).foregroundStyle(.secondary)
             Text(total.moeda).font(.system(size: 32, weight: .heavy)).lineLimit(1).minimumScaleFactor(0.6)
-            Text("\(parcelas) parcelas · livre em \(Mes.nome(fim).lowercased()) de \(String(Mes.ano(fim)))")
-                .font(.system(size: 14)).foregroundStyle(.secondary)
+            BarraProgresso(p: p, cor: .green, altura: 6).padding(.vertical, 4)
+            HStack {
+                Text("Já pagou \(pago.moeda)")
+                Spacer()
+                Text("\(porcento(p)) do caminho").fontWeight(.semibold)
+            }
+            .font(.system(size: 13))
+            Divider().overlay(Color.borda).padding(.vertical, 4)
+            HStack(alignment: .center) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("LIVRE EM").font(.system(size: 11, weight: .semibold)).tracking(1.5).foregroundStyle(.secondary)
+                    Text("\(Mes.nome(fim)) de \(String(Mes.ano(fim)))").font(.system(size: 20, weight: .bold))
+                    Text("\(parcelas) parcelas pela frente").font(.system(size: 13)).foregroundStyle(.secondary)
+                }
+                Spacer()
+                VStack(alignment: .trailing, spacing: 0) {
+                    Text("\(dias)").font(.system(size: 34, weight: .heavy)).lineLimit(1)
+                    Text(dias == 1 ? "dia" : "dias").font(.system(size: 12)).foregroundStyle(.secondary)
+                }
+            }
         }
         .cartao(20)
+    }
+
+    /// Quando deve sobrar dinheiro no mês, sugere adiantar a dívida certa
+    @ViewBuilder
+    private func dinheiroExtra(fin: Financas, ordem: [Divida], hoje: Int, media: Double) -> some View {
+        let cal = Calendar.current
+        let diasNoMes = Double(cal.range(of: .day, in: .month, for: .now)?.count ?? 30)
+        let restam = diasNoMes - Double(cal.component(.day, from: .now)) + 1
+        let reserva = max(0, media * restam / diasNoMes)
+        let sobra = fin.saldoPrevisto(em: hoje) - reserva
+        if let alvo = ordem.first, let ult = alvo.ultima, sobra > 0 {
+            VStack(alignment: .leading, spacing: 8) {
+                Text("DINHEIRO EXTRA PRA DÍVIDA").font(.system(size: 12, weight: .semibold)).tracking(1.5).foregroundStyle(.secondary)
+                Text("Deve sobrar \(sobra.moeda) em \(Mes.nome(hoje).lowercased())").font(.system(size: 17, weight: .bold))
+                if sobra >= ult.valor {
+                    Text(alvo.restantes == 1
+                         ? "Dá pra quitar \(alvo.nome) de vez agora (\(ult.valor.moeda))."
+                         : "Adiantando a última parcela de \(alvo.nome) (\(ult.valor.moeda)), ela acaba em \(mesAno(alvo.fim - 1)) em vez de \(mesAno(alvo.fim)).")
+                        .font(.system(size: 14))
+                    if alvo.juros > 0 {
+                        let economia = ult.valor * alvo.juros / 100 * Double(max(0, ult.mes - hoje))
+                        Text("Economia estimada de \(economia.moeda) em juros.")
+                            .font(.system(size: 13, weight: .semibold)).foregroundStyle(.green)
+                    }
+                    Button { adiantando = alvo } label: {
+                        Label("Adiantar \(ult.valor.moeda) agora", systemImage: "bolt.fill")
+                    }
+                    .buttonStyle(EstiloPrincipal())
+                    .padding(.top, 4)
+                } else {
+                    Text("Faltam \((ult.valor - sobra).moeda) pra adiantar uma parcela de \(alvo.nome). Guarde numa caixinha e adiante quando juntar.")
+                        .font(.system(size: 14))
+                }
+                Text("Já separamos \(reserva.moeda) pros gastos do dia a dia até o fim do mês (pela sua média).")
+                    .font(.system(size: 12)).foregroundStyle(.secondary)
+            }
+            .cartao(20)
+        }
     }
 
     private func cartaoSobra(renda: Double, registrada: Bool, mes: Int, compromisso: Double, media: Double, sobra: Double) -> some View {

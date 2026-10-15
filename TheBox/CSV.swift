@@ -26,7 +26,8 @@ enum CSV {
         }
         let url = FileManager.default.temporaryDirectory.appending(path: "lbo-financas-transacoes.csv")
         do {
-            try linhas.joined(separator: "\n").write(to: url, atomically: true, encoding: .utf8)
+            // o \u{FEFF} no começo faz o Excel abrir com acentos certos
+            try ("\u{FEFF}" + linhas.joined(separator: "\n")).write(to: url, atomically: true, encoding: .utf8)
             return url
         } catch {
             return nil

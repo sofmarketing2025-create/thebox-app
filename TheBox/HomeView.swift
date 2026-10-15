@@ -323,6 +323,7 @@ struct DetalhesSaldoView: View {
     @Query private var recorrencias: [Recorrencia]
     @Environment(\.dismiss) private var dismiss
     @State private var ajustando = false
+    @State private var ajustandoConta: ItemValor?
     @Query private var transacoes: [Transacao]
     @Query private var contas: [Conta]
     @Query(sort: \Carteira.ordem) private var carteiras: [Carteira]
@@ -388,6 +389,36 @@ struct DetalhesSaldoView: View {
                 .padding(.vertical, 6)
                 .background(Color.cartao2.opacity(0.45), in: RoundedRectangle(cornerRadius: 22, style: .continuous))
 
+                if mes == Mes.indice() {
+                    let contasBanco = carteiras.filter { $0.tipo != .credito }
+                    let porConta = contasBanco.map { ItemValor(nome: $0.nome, valor: fin.saldoCarteira($0.nome, ate: mes)) }
+                    let semConta = fin.saldo(em: mes) - porConta.reduce(0) { $0 + $1.valor }
+                    Text("Saldo por conta").font(.system(size: 15, weight: .semibold)).padding(.top, 6)
+                    VStack(spacing: 0) {
+                        ForEach(porConta) { item in
+                            Button { ajustandoConta = item } label: {
+                                HStack {
+                                    Text(item.nome).font(.system(size: 15))
+                                    Spacer()
+                                    Text(item.valor.moeda).fontWeight(.semibold)
+                                        .foregroundStyle(item.valor < 0 ? Color.red : Color.primary)
+                                    Image(systemName: "pencil").font(.system(size: 12)).foregroundStyle(.secondary)
+                                }
+                                .padding(.vertical, 12)
+                                .contentShape(Rectangle())
+                            }
+                            .buttonStyle(.plain)
+                            Divider().overlay(Color.borda)
+                        }
+                        LinhaStat(titulo: "Sem conta definida", valor: semConta.moeda)
+                    }
+                    .padding(.horizontal, 20)
+                    .padding(.vertical, 6)
+                    .background(Color.cartao2.opacity(0.45), in: RoundedRectangle(cornerRadius: 22, style: .continuous))
+                    Text("Toque numa conta pra deixar igual ao app do banco. \"Sem conta definida\" é o que foi registrado sem escolher a conta (ajustes gerais, faturas, adiantamentos).")
+                        .font(.footnote).foregroundStyle(.secondary)
+                }
+
                 if !porCarteira.isEmpty {
                     Text("Gastos por meio de pagamento").font(.system(size: 15, weight: .semibold)).padding(.top, 6)
                     VStack(spacing: 0) {
@@ -415,17 +446,17 @@ struct DetalhesSaldoView: View {
             EditarValorSheet(titulo: "Saldo no banco agora",
                              subtitulo: "Hoje o app mostra \(atual.moeda). Quanto tem na sua conta?",
                              valor: max(atual, 0)) { real in
-                // troca os ajustes antigos do mês por um só, com a diferença certa
-                let semAjuste = atual - f.ajustes(em: mes)
-                for t in f.transacoes(em: mes) where t.ehAjuste { ctx.delete(t) }
-                let diferenca = real - semAjuste
-                if abs(diferenca) >= 0.01 {
-                    ctx.insert(Transacao(tipo: diferenca > 0 ? .receita : .gasto, valor: abs(diferenca),
-                                         categoria: Transacao.categoriaAjuste, carteira: "",
-                                         descricao: "Ajuste de saldo"))
-                }
-                try? ctx.save()
+                Ajuste.igualar(real: real, atual: atual, carteira: "", mes: mes, fin: f, ctx: ctx)
                 Notificacoes.agora("Saldo ajustado", "Agora o app mostra \(real.moeda), igual ao banco.")
+            }
+        }
+        .sheet(item: $ajustandoConta) { item in
+            let f = Financas(transacoes: transacoes, contas: contas, carteiras: carteiras)
+            EditarValorSheet(titulo: "Saldo de \(item.nome) agora",
+                             subtitulo: "Hoje o app mostra \(item.valor.moeda) nessa conta. Quanto tem nela no banco?",
+                             valor: max(item.valor, 0)) { real in
+                Ajuste.igualar(real: real, atual: item.valor, carteira: item.nome, mes: mes, fin: f, ctx: ctx)
+                Notificacoes.agora("\(item.nome) ajustada", "Agora o app mostra \(real.moeda) nessa conta.")
             }
         }
     }

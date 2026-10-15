@@ -145,15 +145,15 @@ struct TourOverlay: View {
     }
 
     static let passos: [Passo] = [
-        Passo(icone: "hand.tap.fill", titulo: "Registre em 2 toques",
-              texto: "Toque duas vezes na parte de trás do iPhone pra registrar um gasto sem nem abrir o app. Esse botão + faz a mesma coisa na mão, quando preferir.",
+        Passo(icone: "plus.circle.fill", titulo: "Registre em 2 segundos",
+              texto: "Toque no + pra lançar um gasto. Ou toque 2x nas costas do iPhone, ou diga \"E aí Siri, gastei no LBO Finanças\".",
               aba: .home, noTopo: true),
-        Passo(icone: "calendar.badge.clock", titulo: "Contas e fatura do cartão",
-              texto: "Suas contas fixas e parceladas ficam aqui. Marcou como pago no crédito? O valor entra na fatura daquele cartão, não sai do saldo deste mês. Assinaturas e financiamentos futuros também aparecem projetados.",
+        Passo(icone: "calendar.badge.clock", titulo: "Suas contas",
+              texto: "Contas fixas e parceladas ficam aqui. O app avisa antes de vencer e você marca como paga direto na notificação.",
               aba: .contas, noTopo: false),
-        Passo(icone: "chart.bar.fill", titulo: "Análise",
-              texto: "Veja pra onde o dinheiro está indo, por categoria e por mês, pra entender seus hábitos ao longo do tempo.",
-              aba: .analise, noTopo: false)
+        Passo(icone: "flag.checkered", titulo: "Saia das dívidas",
+              texto: "Veja quanto falta, em que dia você fica livre e quanto adiantar pra terminar antes.",
+              aba: .quitar, noTopo: false)
     ]
 
     let passo: Int

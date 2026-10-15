@@ -1,5 +1,6 @@
 import AppIntents
 import SwiftData
+import SwiftUI
 
 struct ErroAtalho: Error, CustomLocalizedStringResourceConvertible {
     let texto: String
@@ -137,8 +138,82 @@ struct NovoRegistroIntent: AppIntent {
     }
 }
 
+/// "Quanto posso gastar hoje": resposta rápida pela Siri ou pelo widget do app Atalhos
+struct QuantoPossoGastarIntent: AppIntent {
+    static var title: LocalizedStringResource = "Quanto posso gastar hoje"
+    static var description = IntentDescription("Mostra quanto ainda dá pra gastar hoje, o orçamento da semana e o saldo da conta.")
+    static var openAppWhenRun: Bool = false
+
+    @MainActor
+    func perform() async throws -> some IntentResult & ProvidesDialog & ShowsSnippetView {
+        guard let container = Store.atual else {
+            throw ErroAtalho(texto: "Entre no LBO Finanças primeiro.")
+        }
+        let ctx = container.mainContext
+        let ts = (try? ctx.fetch(FetchDescriptor<Transacao>())) ?? []
+        let fin = Financas(transacoes: ts,
+                           contas: (try? ctx.fetch(FetchDescriptor<Conta>())) ?? [],
+                           carteiras: (try? ctx.fetch(FetchDescriptor<Carteira>())) ?? [],
+                           limites: (try? ctx.fetch(FetchDescriptor<LimiteMensal>())) ?? [],
+                           recorrencias: (try? ctx.fetch(FetchDescriptor<Recorrencia>())) ?? [])
+        let r = fin.podeGastarHoje()
+        let mes = Mes.indice()
+        let orc = OrcamentoDia.situacao(em: .now, transacoes: ts)
+        var frase = !r.temBase
+            ? "Registre seu salário ou ajuste o saldo pra eu calcular quanto você pode gastar."
+            : (r.resta >= 0 ? "Hoje você ainda pode gastar \(r.resta.moeda)." : "Hoje você já passou \(abs(r.resta).moeda) do que podia.")
+        if let orc {
+            let resta = orc.limite - orc.gasto
+            frase += resta >= 0 ? " Resta \(resta.moeda) do orçamento \(orc.nome)." : " Passou \(abs(resta).moeda) do orçamento \(orc.nome)."
+        }
+        return .result(dialog: IntentDialog(stringLiteral: frase),
+                       view: ResumoAtalho(podeHoje: r.temBase ? r.resta : nil,
+                                          orcamento: orc.map { ($0.limite - $0.gasto, $0.nome) },
+                                          naConta: fin.saldo(em: mes),
+                                          sobra: fin.saldoPrevisto(em: mes)))
+    }
+}
+
+/// O cartãozinho que aparece na Siri / no Atalhos
+struct ResumoAtalho: View {
+    let podeHoje: Double?
+    let orcamento: (Double, String)?
+    let naConta: Double
+    let sobra: Double
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            linha("Pode gastar hoje", podeHoje.map { $0.moeda } ?? "—", (podeHoje ?? 0) < 0 ? .orange : .green)
+            if let orcamento {
+                linha("Orçamento \(orcamento.1)", (orcamento.0 < 0 ? "-" : "") + abs(orcamento.0).moeda, orcamento.0 < 0 ? .red : .primary)
+            }
+            linha("Na conta hoje", naConta.moeda, naConta < 0 ? .red : .primary)
+            linha("Sobra no fim do mês", sobra.moeda, sobra < 0 ? .red : .primary)
+        }
+        .padding(16)
+    }
+
+    private func linha(_ titulo: String, _ valor: String, _ cor: Color) -> some View {
+        HStack {
+            Text(titulo).font(.system(size: 14)).foregroundStyle(.secondary)
+            Spacer()
+            Text(valor).font(.system(size: 16, weight: .bold)).foregroundStyle(cor)
+        }
+    }
+}
+
 struct LBOAtalhos: AppShortcutsProvider {
     static var appShortcuts: [AppShortcut] {
+        AppShortcut(
+            intent: QuantoPossoGastarIntent(),
+            phrases: [
+                "Quanto posso gastar no \(.applicationName)",
+                "Quanto posso gastar hoje no \(.applicationName)",
+                "Meu saldo no \(.applicationName)"
+            ],
+            shortTitle: "Quanto posso gastar",
+            systemImageName: "banknote"
+        )
         AppShortcut(
             intent: NovoRegistroIntent(),
             phrases: [

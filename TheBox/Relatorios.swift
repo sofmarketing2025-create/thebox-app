@@ -227,6 +227,8 @@ struct RevisaoSemanaView: View {
 struct FechamentoMesView: View {
     let mes: Int
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.modelContext) private var ctx
+    @State private var exportar: ArquivoExportado?
     @Query private var transacoes: [Transacao]
     @Query private var contas: [Conta]
     @Query(sort: \Carteira.ordem) private var carteiras: [Carteira]
@@ -295,7 +297,20 @@ struct FechamentoMesView: View {
             .background(Color.fundo)
             .navigationTitle("Fechamento de \(Mes.nome(mes).lowercased())")
             .navigationBarTitleDisplayMode(.inline)
-            .toolbar { ToolbarItem(placement: .confirmationAction) { Button("OK") { dismiss() } } }
+            .toolbar {
+                ToolbarItem(placement: .confirmationAction) { Button("OK") { dismiss() } }
+                ToolbarItem(placement: .topBarLeading) {
+                    Menu {
+                        Button { exportar = RelatorioPDF.gerar(mes: mes, ctx: ctx).map { ArquivoExportado(url: $0) } } label: {
+                            Label("Relatório em PDF", systemImage: "doc.richtext")
+                        }
+                        Button { exportar = CSV.gerar(fin.transacoes(em: mes)).map { ArquivoExportado(url: $0) } } label: {
+                            Label("Planilha do Excel (CSV)", systemImage: "tablecells")
+                        }
+                    } label: { Image(systemName: "square.and.arrow.up") }
+                }
+            }
+            .sheet(item: $exportar) { a in Compartilhar(itens: [a.url]) }
         }
         .folha()
     }
