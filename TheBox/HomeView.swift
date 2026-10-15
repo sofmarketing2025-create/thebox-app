@@ -28,7 +28,8 @@ struct HomeView: View {
     var body: some View {
         let fin = Financas(transacoes: transacoes, contas: contas, carteiras: carteiras, limites: limites,
                            recorrencias: recorrencias)
-        let doMes = fin.transacoes(em: mes)
+        // a correção pra bater com o banco não é um gasto nem uma receita de verdade: fica só em Ver detalhes
+        let doMes = fin.transacoes(em: mes).filter { !$0.ehAjuste }
         let limite = fin.limite(em: mes)
         let gasto = fin.gastoTotal(em: mes)
 
@@ -253,7 +254,8 @@ struct CartaoSaldo: View {
                     .lineLimit(1).minimumScaleFactor(0.5)
                 if aPagar > 0 && !ocultar {
                     Text(mesAtual
-                         ? "Faltam \(aPagar.moeda) em contas: \(saldo >= 0 ? "sobra" : "falta") \(abs(saldo).moeda) no fim do mês"
+                         ? (saldo >= 0 ? "Contas a pagar: \(aPagar.moeda) · sobra \(saldo.moeda) no fim do mês"
+                                       : "Contas a pagar: \(aPagar.moeda) · faltam \(abs(saldo).moeda) pra cobrir")
                          : "Contas do mês: \(aPagar.moeda)")
                         .font(.system(size: 13))
                         .foregroundStyle(mesAtual && saldo < 0 ? Color.red : Color.secondary)
@@ -370,7 +372,7 @@ struct DetalhesSaldoView: View {
                     }
                     if !ajustes.isEmpty {
                         let liquido = ajusteEntrada - ajusteSaida
-                        LinhaStat(titulo: "Ajuste de saldo", valor: (liquido >= 0 ? "+" : "-") + abs(liquido).moeda)
+                        LinhaStat(titulo: "Correção pra bater com o banco", valor: (liquido >= 0 ? "+" : "-") + abs(liquido).moeda)
                         Divider().overlay(Color.borda)
                     }
                     LinhaStat(titulo: "Contas pagas", valor: "-" + fin.contasPagasFora(em: mes).moeda)
@@ -585,7 +587,7 @@ struct TodasTransacoesView: View {
                                 Spacer()
                                 Text((t.efeitoNoSaldo < 0 ? "-" : "+") + t.valor.moeda)
                                     .fontWeight(.semibold)
-                                    .foregroundStyle(t.tipo == .receita ? Color.green : (t.tipo == .transferencia ? Color.secondary : Color.primary))
+                                    .foregroundStyle(t.ehAjuste ? Color.secondary : (t.tipo == .receita ? Color.green : (t.tipo == .transferencia ? Color.secondary : Color.primary)))
                             }
                             .contentShape(Rectangle())
                             .onTapGesture { editando = t }
